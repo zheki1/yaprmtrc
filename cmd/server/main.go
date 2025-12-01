@@ -42,9 +42,11 @@ func (m *MemStorage) UpdateCounter(name string, val int64) {
 }
 
 func (m *MemStorage) GetMetrics() map[string]float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	metrics := make(map[string]float64)
 	for key, value := range m.gauges {
-		metrics[key+"_gauges"] = value
+		metrics[key+"_gauge"] = value
 	}
 	for key, value := range m.counters {
 		metrics[key+"_counter"] = float64(value)
@@ -52,30 +54,16 @@ func (m *MemStorage) GetMetrics() map[string]float64 {
 	return metrics
 }
 
-func (m *MemStorage) GetGauge(name string) (float64, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	val, ok := m.gauges[name]
-	return val, ok
-}
-
-func (m *MemStorage) GetCounter(name string) (int64, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	val, ok := m.counters[name]
-	return val, ok
-}
-
 func updateHandler(storage Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		path := r.URL.Path
 		if !strings.Contains(path, "/update/") {
-			http.Error(w, "Invalid path", http.StatusBadRequest)
+			http.Error(rw, "Invalid path", http.StatusBadRequest)
 			return
 		}
 
@@ -83,12 +71,12 @@ func updateHandler(storage Storage) http.HandlerFunc {
 		metrics := strings.Split(pathMetrics, "/")
 
 		if len(metrics) >= 2 && metrics[1] == "" {
-			http.Error(w, "Metric name not found", http.StatusNotFound)
+			http.Error(rw, "Metric name not found", http.StatusNotFound)
 			return
 		}
 
 		if len(metrics) != 3 {
-			http.Error(w, "Invalid path", http.StatusBadRequest)
+			http.Error(rw, "Invalid path", http.StatusBadRequest)
 			return
 		}
 
@@ -98,33 +86,33 @@ func updateHandler(storage Storage) http.HandlerFunc {
 		case "gauge":
 			val, err := strconv.ParseFloat(rawValue, 64)
 			if err != nil {
-				http.Error(w, "Invalid gauge value", http.StatusBadRequest)
+				http.Error(rw, "Invalid value", http.StatusBadRequest)
 				return
 			}
 			storage.UpdateGauge(name, val)
-			w.WriteHeader(http.StatusOK)
+			rw.WriteHeader(http.StatusOK)
 		case "counter":
 			val, err := strconv.ParseInt(rawValue, 10, 64)
 			if err != nil {
-				http.Error(w, "Invalid counter value", http.StatusBadRequest)
+				http.Error(rw, "Invalid value", http.StatusBadRequest)
 				return
 			}
 			storage.UpdateCounter(name, val)
-			w.WriteHeader(http.StatusOK)
+			rw.WriteHeader(http.StatusOK)
 		default:
-			http.Error(w, "Unknown metric type", http.StatusBadRequest)
+			http.Error(rw, "Invalid metric type", http.StatusBadRequest)
 		}
 	}
 }
 
 func getHandler(storage Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(rw http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		} else {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(storage.GetMetrics())
+			rw.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(rw).Encode(storage.GetMetrics())
 		}
 	}
 }
