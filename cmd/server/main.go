@@ -62,19 +62,26 @@ func updateHandler(storage *MemStorage) http.HandlerFunc {
 			return
 		}
 
-		path := strings.TrimPrefix(r.URL.Path, "/update/")
-		parts := strings.Split(path, "/")
-		if len(parts) != 3 {
+		path := r.URL.Path
+		if !strings.Contains(path, "/update/") {
 			http.Error(w, "Invalid path", http.StatusBadRequest)
 			return
 		}
 
-		metricType, name, rawValue := parts[0], parts[1], parts[2]
+		pathMetrics := strings.TrimPrefix(path, "/update/")
+		metrics := strings.Split(pathMetrics, "/")
 
-		if name == "" {
+		if len(metrics) >= 2 && metrics[1] == "" {
 			http.Error(w, "Metric name not found", http.StatusNotFound)
 			return
 		}
+
+		if len(metrics) != 3 {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		metricType, name, rawValue := metrics[0], metrics[1], metrics[2]
 
 		switch metricType {
 		case "gauge":
