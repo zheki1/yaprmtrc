@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,8 +13,7 @@ import (
 type Storage interface {
 	UpdateGauge(name string, val float64)
 	UpdateCounter(name string, val int64)
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
+	GetMetrics() map[string]float64
 }
 
 type MemStorage struct {
@@ -41,6 +41,17 @@ func (m *MemStorage) UpdateCounter(name string, val int64) {
 	m.counters[name] += val
 }
 
+func (m *MemStorage) GetMetrics() map[string]float64 {
+	metrics := make(map[string]float64)
+	for key, value := range m.gauges {
+		metrics[key+"_gauges"] = value
+	}
+	for key, value := range m.counters {
+		metrics[key+"_counter"] = float64(value)
+	}
+	return metrics
+}
+
 func (m *MemStorage) GetGauge(name string) (float64, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -55,7 +66,7 @@ func (m *MemStorage) GetCounter(name string) (int64, bool) {
 	return val, ok
 }
 
-func updateHandler(storage *MemStorage) http.HandlerFunc {
+func updateHandler(storage Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -106,9 +117,22 @@ func updateHandler(storage *MemStorage) http.HandlerFunc {
 	}
 }
 
+func getHandler(storage Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(storage.GetMetrics())
+		}
+	}
+}
+
 func main() {
 	storage := NewMemStorage()
 	http.HandleFunc("/update/", updateHandler(storage))
+	http.Handle("/show", getHandler(storage))
 	fmt.Println("Server started at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
