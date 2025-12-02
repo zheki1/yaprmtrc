@@ -1,116 +1,174 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
-type StorageMock struct {
-	GaugeUpdates   map[string]float64
-	CounterUpdates map[string]int64
+func setupRouter() http.Handler {
+	store := NewMemStorage()
+	r := chi.NewRouter()
+
+	r.Post("/update/{type}/{name}/{value}", updateHandler(store))
+	r.Get("/value/{type}/{name}", valueHandler(store))
+	r.Get("/", pageHandler(store))
+	return r
 }
 
-func NewStorageMock() *StorageMock {
-	return &StorageMock{
-		GaugeUpdates:   make(map[string]float64),
-		CounterUpdates: make(map[string]int64),
+func TestUpdateGaugeOK(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("POST", "/update/gauge/Alloc/123.45", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
 	}
 }
 
-func (m *StorageMock) UpdateGauge(name string, value float64) {
-	m.GaugeUpdates[name] = value
+func TestUpdateCounterOK(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("POST", "/update/counter/Requests/10", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
 }
 
-func (m *StorageMock) UpdateCounter(name string, value int64) {
-	m.CounterUpdates[name] += value
+func TestUpdateNoName(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("POST", "/update/gauge//123", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
 }
 
-func (m *StorageMock) GetMetrics() map[string]float64 {
-	metrics := make(map[string]float64)
-	for key, value := range m.GaugeUpdates {
-		metrics[key+"_gauges"] = value
+func TestUpdateBadType(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("POST", "/update/badtype/MyMetric/5", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
-	for key, value := range m.CounterUpdates {
-		metrics[key+"_counter"] = float64(value)
-	}
-	return metrics
 }
 
-func TestUpdateHandler(t *testing.T) {
-	storage := NewStorageMock()
-	handler := updateHandler(storage)
+func TestUpdateBadValue(t *testing.T) {
+	r := setupRouter()
 
-	tests := []struct {
-		name            string
-		method          string
-		urlPath         string
-		expectedCode    int
-		expectedGauge   map[string]float64
-		expectedCounter map[string]int64
-	}{
-		{
-			name:          "Valid gauge",
-			method:        http.MethodPost,
-			urlPath:       "/update/gauge/temp/36.6",
-			expectedCode:  http.StatusOK,
-			expectedGauge: map[string]float64{"temp": 36.6},
-		},
-		{
-			name:            "Valid counter",
-			method:          http.MethodPost,
-			urlPath:         "/update/counter/hits/10",
-			expectedCode:    http.StatusOK,
-			expectedCounter: map[string]int64{"hits": 10},
-		},
-		{
-			name:         "Invalid method",
-			method:       http.MethodGet,
-			urlPath:      "/update/gauge/temp/36.6",
-			expectedCode: http.StatusMethodNotAllowed,
-		},
-		{
-			name:         "Invalid metric type",
-			method:       http.MethodPost,
-			urlPath:      "/update/unknown/metric/123",
-			expectedCode: http.StatusBadRequest,
-		},
-		{
-			name:         "Empty metric name",
-			method:       http.MethodPost,
-			urlPath:      "/update/gauge//123",
-			expectedCode: http.StatusNotFound,
-		},
-		{
-			name:         "Bad gauge value",
-			method:       http.MethodPost,
-			urlPath:      "/update/gauge/pressure/abc",
-			expectedCode: http.StatusBadRequest,
-		},
+	req := httptest.NewRequest("POST", "/update/gauge/MyMetric/abc", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestValueGaugeOK(t *testing.T) {
+	r := setupRouter()
+
+	// сначала запишем gauge
+	req1 := httptest.NewRequest("POST", "/update/gauge/Alloc/555.0", nil)
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, req1)
+
+	// читаем gauge
+	req2 := httptest.NewRequest("GET", "/value/gauge/Alloc", nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w2.Code)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.urlPath, nil)
-			rr := httptest.NewRecorder()
+	body, _ := io.ReadAll(w2.Body)
+	if !strings.Contains(string(body), "555") {
+		t.Fatalf("expected value 555, got %s", body)
+	}
+}
 
-			handler(rr, req)
+func TestValueCounterOK(t *testing.T) {
+	r := setupRouter()
 
-			if rr.Code != tt.expectedCode {
-				t.Errorf("expected status %d, got %d", tt.expectedCode, rr.Code)
-			}
+	req1 := httptest.NewRequest("POST", "/update/counter/Requests/10", nil)
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, req1)
 
-			for key, value := range tt.expectedGauge {
-				if existedValue, ok := storage.GaugeUpdates[key]; !ok || existedValue != value {
-					t.Errorf("expected gauge %s=%v, got %v", key, value, existedValue)
-				}
-			}
+	req2 := httptest.NewRequest("GET", "/value/counter/Requests", nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
 
-			for key, value := range tt.expectedCounter {
-				if existedValue, ok := storage.CounterUpdates[key]; !ok || existedValue != value {
-					t.Errorf("expected counter %s=%v, got %v", key, value, existedValue)
-				}
-			}
-		})
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w2.Code)
+	}
+
+	body, _ := io.ReadAll(w2.Body)
+	if !strings.Contains(string(body), "10") {
+		t.Fatalf("expected value 10, got %s", body)
+	}
+}
+
+func TestMetricNotFound(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("GET", "/value/gauge/UnknownMetric", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestMetricTypeNotFound(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("GET", "/value/badtype/Alloc", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestIndexHTML(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body, _ := io.ReadAll(w.Body)
+	if !strings.Contains(string(body), "<html>") {
+		t.Fatalf("expected HTML page, got %s", body)
 	}
 }
