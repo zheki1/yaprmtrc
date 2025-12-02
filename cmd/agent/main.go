@@ -20,7 +20,7 @@ type Metrics struct {
 var serverAddr *string
 
 func main() {
-	serverAddr = flag.String("a", "localhost:8080", "Address of metrics server")
+	serverAddr = flag.String("a", "http://localhost:8080", "Address of metrics server")
 	reportInterval := flag.Int("r", 10, "Report interval (seconds)")
 	pollInterval := flag.Int("p", 2, "Poll interval (seconds)")
 	flag.Parse()
