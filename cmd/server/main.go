@@ -49,15 +49,7 @@ func (m *MemStorage) GetCounter(name string) (int64, bool) {
 }
 
 func (m *MemStorage) GetAll() (map[string]float64, map[string]int64) {
-	g := make(map[string]float64)
-	c := make(map[string]int64)
-	for k, v := range m.gauges {
-		g[k] = v
-	}
-	for k, v := range m.counters {
-		c[k] = v
-	}
-	return g, c
+	return m.gauges, m.counters
 }
 
 func updateHandler(storage Storage) http.HandlerFunc {
@@ -103,7 +95,7 @@ func valueHandler(store Storage) http.HandlerFunc {
 		case "gauge":
 			if v, ok := store.GetGauge(name); ok {
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprintf(w, "%f", v)
+				fmt.Fprintf(w, "%g", v)
 				return
 			}
 		case "counter":
