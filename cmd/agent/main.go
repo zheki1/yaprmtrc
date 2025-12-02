@@ -20,7 +20,7 @@ type Metrics struct {
 var serverAddr *string
 
 func main() {
-	serverAddr = flag.String("a", "http://localhost:8080", "Address of metrics server")
+	serverAddr = flag.String("a", "localhost:8080", "Address of metrics server")
 	reportInterval := flag.Int("r", 10, "Report interval (seconds)")
 	pollInterval := flag.Int("p", 2, "Poll interval (seconds)")
 	flag.Parse()
@@ -98,7 +98,7 @@ func sendAllMetrics(m *Metrics) {
 }
 
 func sendMetric(metricType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", *serverAddr, metricType, name, value)
+	url := fmt.Sprintf("http://%s/update/%s/%s/%s", *serverAddr, metricType, name, value)
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(""))
 	if err != nil {
