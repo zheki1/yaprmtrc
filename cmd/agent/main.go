@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -11,36 +12,38 @@ import (
 	"time"
 )
 
-const (
-	pollInterval   = 2  // seconds
-	reportInterval = 10 // seconds
-	baseURL        = "http://localhost:8080"
-)
-
 type Metrics struct {
 	Gauge   map[string]float64
 	Counter map[string]int64
 }
 
-func NewMetrics() *Metrics {
-	return &Metrics{
+var serverAddr *string
+
+func main() {
+	serverAddr = flag.String("a", "localhost:8080", "Address of metrics server")
+	reportInterval := flag.Int("r", 10, "Report interval (seconds)")
+	pollInterval := flag.Int("p", 2, "Poll interval (seconds)")
+	flag.Parse()
+	if len(flag.Args()) != 0 {
+		log.Fatalf("unknown flags: %v", flag.Args())
+	}
+
+	fmt.Printf("Agent started. Server=%s, poll=%ds, report=%ds\n",
+		*serverAddr, *pollInterval, *reportInterval)
+
+	metrics := &Metrics{
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}
-}
 
-func main() {
-
-	metrics := NewMetrics()
-	fmt.Println("Agent running...")
 	for {
 		collectRuntimeMetrics(metrics)
 
-		if metrics.Counter["PollCount"]%int64(reportInterval/pollInterval) == 0 {
+		if metrics.Counter["PollCount"]%int64(*reportInterval / *pollInterval) == 0 {
 			sendAllMetrics(metrics)
 		}
 
-		time.Sleep(time.Duration(pollInterval) * time.Second)
+		time.Sleep(time.Duration(*pollInterval) * time.Second)
 	}
 }
 
@@ -95,7 +98,7 @@ func sendAllMetrics(m *Metrics) {
 }
 
 func sendMetric(metricType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", baseURL, metricType, name, value)
+	url := fmt.Sprintf("%s/update/%s/%s/%s", serverAddr, metricType, name, value)
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(""))
 	if err != nil {
