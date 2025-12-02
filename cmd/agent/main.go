@@ -98,7 +98,7 @@ func sendAllMetrics(m *Metrics) {
 }
 
 func sendMetric(metricType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", serverAddr, metricType, name, value)
+	url := fmt.Sprintf("%s/update/%s/%s/%s", *serverAddr, metricType, name, value)
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(""))
 	if err != nil {
