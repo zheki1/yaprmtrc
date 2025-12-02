@@ -1,23 +1,24 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
-	"sync"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type Storage interface {
 	UpdateGauge(name string, val float64)
 	UpdateCounter(name string, val int64)
-	GetMetrics() map[string]float64
+	GetGauge(name string) (float64, bool)
+	GetCounter(name string) (int64, bool)
+	GetAll() (map[string]float64, map[string]int64)
 }
 
 type MemStorage struct {
-	mu       sync.RWMutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
@@ -30,97 +31,141 @@ func NewMemStorage() *MemStorage {
 }
 
 func (m *MemStorage) UpdateGauge(name string, val float64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.gauges[name] = val
 }
 
 func (m *MemStorage) UpdateCounter(name string, val int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.counters[name] += val
 }
 
-func (m *MemStorage) GetMetrics() map[string]float64 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	metrics := make(map[string]float64)
-	for key, value := range m.gauges {
-		metrics[key+"_gauge"] = value
-	}
-	for key, value := range m.counters {
-		metrics[key+"_counter"] = float64(value)
-	}
-	return metrics
+func (m *MemStorage) GetGauge(name string) (float64, bool) {
+	v, ok := m.gauges[name]
+	return v, ok
+}
+
+func (m *MemStorage) GetCounter(name string) (int64, bool) {
+	v, ok := m.counters[name]
+	return v, ok
+}
+
+func (m *MemStorage) GetAll() (map[string]float64, map[string]int64) {
+	return m.gauges, m.counters
 }
 
 func updateHandler(storage Storage) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
+	return func(w http.ResponseWriter, r *http.Request) {
+		metricType := chi.URLParam(r, "type")
+		name := chi.URLParam(r, "name")
+		valueStr := chi.URLParam(r, "value")
+		if name == "" {
+			http.Error(w, "Metric name not found", http.StatusNotFound)
 			return
 		}
-
-		path := r.URL.Path
-		if !strings.Contains(path, "/update/") {
-			http.Error(rw, "Invalid path", http.StatusBadRequest)
-			return
-		}
-
-		pathMetrics := strings.TrimPrefix(path, "/update/")
-		metrics := strings.Split(pathMetrics, "/")
-
-		if len(metrics) >= 2 && metrics[1] == "" {
-			http.Error(rw, "Metric name not found", http.StatusNotFound)
-			return
-		}
-
-		if len(metrics) != 3 {
-			http.Error(rw, "Invalid path", http.StatusBadRequest)
-			return
-		}
-
-		metricType, name, rawValue := metrics[0], metrics[1], metrics[2]
 
 		switch metricType {
 		case "gauge":
-			val, err := strconv.ParseFloat(rawValue, 64)
+			v, err := strconv.ParseFloat(valueStr, 64)
 			if err != nil {
-				http.Error(rw, "Invalid value", http.StatusBadRequest)
+				http.Error(w, "invalid value", http.StatusBadRequest)
 				return
 			}
-			storage.UpdateGauge(name, val)
-			rw.WriteHeader(http.StatusOK)
+			storage.UpdateGauge(name, v)
 		case "counter":
-			val, err := strconv.ParseInt(rawValue, 10, 64)
+			delta, err := strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
-				http.Error(rw, "Invalid value", http.StatusBadRequest)
+				http.Error(w, "invalid value", http.StatusBadRequest)
 				return
 			}
-			storage.UpdateCounter(name, val)
-			rw.WriteHeader(http.StatusOK)
+			storage.UpdateCounter(name, delta)
 		default:
-			http.Error(rw, "Invalid metric type", http.StatusBadRequest)
+			http.Error(w, "unknown metric type", http.StatusBadRequest)
+			return
 		}
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
-func getHandler(storage Storage) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		} else {
-			rw.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(rw).Encode(storage.GetMetrics())
+func valueHandler(store Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mType := chi.URLParam(r, "type")
+		name := chi.URLParam(r, "name")
+
+		switch mType {
+		case "gauge":
+			if v, ok := store.GetGauge(name); ok {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprintf(w, "%g", v)
+				return
+			}
+		case "counter":
+			if v, ok := store.GetCounter(name); ok {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprintf(w, "%d", v)
+				return
+			}
 		}
+
+		http.Error(w, "metric not found", http.StatusNotFound)
+	}
+}
+
+func pageHandler(store Storage) http.HandlerFunc {
+	type MetricRow struct {
+		Name  string
+		Type  string
+		Value string
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		gauges, counters := store.GetAll()
+
+		var rows []MetricRow
+		for name, v := range gauges {
+			rows = append(rows, MetricRow{name, "gauge", fmt.Sprintf("%f", v)})
+		}
+		for name, v := range counters {
+			rows = append(rows, MetricRow{name, "counter", fmt.Sprintf("%d", v)})
+		}
+
+		tpl := `
+		<!DOCTYPE html>
+		<html>
+		<head><title>Metrics</title></head>
+		<body>
+			<h1>Metrics</h1>
+			<table>
+				<tr>
+					<th>Name</th>
+					<th>Type</th>
+					<th>Value</th>
+				</tr>
+
+				{{range .}}
+				<tr>
+					<td>{{.Name}}</td>
+					<td>{{.Type}}</td>
+					<td>{{.Value}}</td>
+				</tr>
+				{{end}}
+				
+			</table>
+		</body>
+		</html>
+		`
+
+		t := template.Must(template.New("index").Parse(tpl))
+		w.WriteHeader(http.StatusOK)
+		t.Execute(w, rows)
 	}
 }
 
 func main() {
 	storage := NewMemStorage()
-	http.HandleFunc("/update/", updateHandler(storage))
-	http.Handle("/show", getHandler(storage))
+	r := chi.NewRouter()
+	r.Post("/update/{type}/{name}/{value}", updateHandler(storage))
+	r.Get("/value/{type}/{name}", valueHandler(storage))
+	r.Get("/", pageHandler(storage))
 	fmt.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", r))
 }

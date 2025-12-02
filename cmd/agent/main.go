@@ -32,7 +32,7 @@ func NewMetrics() *Metrics {
 func main() {
 
 	metrics := NewMetrics()
-
+	fmt.Println("Agent running...")
 	for {
 		collectRuntimeMetrics(metrics)
 
