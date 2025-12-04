@@ -1,119 +1,29 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"log"
-	"math/rand"
-	"net/http"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
 )
 
-const (
-	pollInterval   = 2  // seconds
-	reportInterval = 10 // seconds
-	baseURL        = "http://localhost:8080"
-)
-
-type Metrics struct {
-	Gauge   map[string]float64
-	Counter map[string]int64
-}
-
-func NewMetrics() *Metrics {
-	return &Metrics{
-		Gauge:   make(map[string]float64),
-		Counter: make(map[string]int64),
-	}
+type Config struct {
+	Addr           string
+	ReportInterval int
+	PollInterval   int
 }
 
 func main() {
+	cfg := &Config{}
 
-	metrics := NewMetrics()
-	fmt.Println("Agent running...")
-	for {
-		collectRuntimeMetrics(metrics)
+	flag.StringVar(&cfg.Addr, "a", "localhost:8080", "Address of metrics server")
+	flag.IntVar(&cfg.ReportInterval, "r", 10, "Report interval in seconds")
+	flag.IntVar(&cfg.PollInterval, "p", 2, "Poll interval in seconds")
 
-		if metrics.Counter["PollCount"]%int64(reportInterval/pollInterval) == 0 {
-			sendAllMetrics(metrics)
-		}
+	flag.Parse()
 
-		time.Sleep(time.Duration(pollInterval) * time.Second)
-	}
-}
-
-func collectRuntimeMetrics(m *Metrics) {
-	var r runtime.MemStats
-	runtime.ReadMemStats(&r)
-
-	// Gauge metrics
-	m.Gauge["Alloc"] = float64(r.Alloc)
-	m.Gauge["BuckHashSys"] = float64(r.BuckHashSys)
-	m.Gauge["Frees"] = float64(r.Frees)
-	m.Gauge["GCCPUFraction"] = r.GCCPUFraction
-	m.Gauge["GCSys"] = float64(r.GCSys)
-	m.Gauge["HeapAlloc"] = float64(r.HeapAlloc)
-	m.Gauge["HeapIdle"] = float64(r.HeapIdle)
-	m.Gauge["HeapInuse"] = float64(r.HeapInuse)
-	m.Gauge["HeapObjects"] = float64(r.HeapObjects)
-	m.Gauge["HeapReleased"] = float64(r.HeapReleased)
-	m.Gauge["HeapSys"] = float64(r.HeapSys)
-	m.Gauge["LastGC"] = float64(r.LastGC)
-	m.Gauge["Lookups"] = float64(r.Lookups)
-	m.Gauge["MCacheInuse"] = float64(r.MCacheInuse)
-	m.Gauge["MCacheSys"] = float64(r.MCacheSys)
-	m.Gauge["MSpanInuse"] = float64(r.MSpanInuse)
-	m.Gauge["MSpanSys"] = float64(r.MSpanSys)
-	m.Gauge["Mallocs"] = float64(r.Mallocs)
-	m.Gauge["NextGC"] = float64(r.NextGC)
-	m.Gauge["NumForcedGC"] = float64(r.NumForcedGC)
-	m.Gauge["NumGC"] = float64(r.NumGC)
-	m.Gauge["OtherSys"] = float64(r.OtherSys)
-	m.Gauge["PauseTotalNs"] = float64(r.PauseTotalNs)
-	m.Gauge["StackInuse"] = float64(r.StackInuse)
-	m.Gauge["StackSys"] = float64(r.StackSys)
-	m.Gauge["Sys"] = float64(r.Sys)
-	m.Gauge["TotalAlloc"] = float64(r.TotalAlloc)
-
-	// RandomValue gauge
-	m.Gauge["RandomValue"] = rand.Float64()
-
-	// Counter
-	m.Counter["PollCount"]++
-}
-
-func sendAllMetrics(m *Metrics) {
-	for name, value := range m.Gauge {
-		sendMetric("gauge", name, fmt.Sprintf("%f", value))
+	if len(flag.Args()) != 0 {
+		log.Fatalf("unknown flags: %v", flag.Args())
 	}
 
-	for name, value := range m.Counter {
-		sendMetric("counter", name, strconv.FormatInt(value, 10))
-	}
-}
-
-func sendMetric(metricType, name, value string) {
-	url := fmt.Sprintf("%s/update/%s/%s/%s", baseURL, metricType, name, value)
-
-	req, err := http.NewRequest("POST", url, strings.NewReader(""))
-	if err != nil {
-		log.Println("POST error:", err)
-		return
-	}
-
-	req.Header.Set("Content-Type", "text/plain")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metricType, name, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metricType, name)
-	}
+	agent := NewAgent(cfg)
+	agent.Start()
 }
