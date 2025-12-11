@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -161,11 +162,17 @@ func pageHandler(store Storage) http.HandlerFunc {
 }
 
 func main() {
+	serverAddr := flag.String("a", "localhost:8080", "HTTP server address")
+	flag.Parse()
+	if len(flag.Args()) != 0 {
+		log.Fatalf("unknown flags: %v", flag.Args())
+	}
+
 	storage := NewMemStorage()
 	r := chi.NewRouter()
 	r.Post("/update/{type}/{name}/{value}", updateHandler(storage))
 	r.Get("/value/{type}/{name}", valueHandler(storage))
 	r.Get("/", pageHandler(storage))
-	fmt.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	fmt.Printf("Server started at %s", *serverAddr)
+	log.Fatal(http.ListenAndServe(*serverAddr, r))
 }
