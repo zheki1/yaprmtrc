@@ -9,49 +9,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type Storage interface {
-	UpdateGauge(name string, val float64)
-	UpdateCounter(name string, val int64)
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
-	GetAll() (map[string]float64, map[string]int64)
+type Server struct {
+	storage Storage
 }
 
-type MemStorage struct {
-	gauges   map[string]float64
-	counters map[string]int64
-}
-
-func NewMemStorage() *MemStorage {
-	return &MemStorage{
-		gauges:   make(map[string]float64),
-		counters: make(map[string]int64),
-	}
-}
-
-func (m *MemStorage) UpdateGauge(name string, val float64) {
-	m.gauges[name] = val
-}
-
-func (m *MemStorage) UpdateCounter(name string, val int64) {
-	m.counters[name] += val
-}
-
-func (m *MemStorage) GetGauge(name string) (float64, bool) {
-	v, ok := m.gauges[name]
-	return v, ok
-}
-
-func (m *MemStorage) GetCounter(name string) (int64, bool) {
-	v, ok := m.counters[name]
-	return v, ok
-}
-
-func (m *MemStorage) GetAll() (map[string]float64, map[string]int64) {
-	return m.gauges, m.counters
-}
-
-func updateHandler(storage Storage) http.HandlerFunc {
+func (s *Server) updateHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		metricType := chi.URLParam(r, "type")
 		name := chi.URLParam(r, "name")
@@ -68,14 +30,14 @@ func updateHandler(storage Storage) http.HandlerFunc {
 				http.Error(w, "invalid value", http.StatusBadRequest)
 				return
 			}
-			storage.UpdateGauge(name, v)
+			s.storage.UpdateGauge(name, v)
 		case "counter":
 			delta, err := strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
 				http.Error(w, "invalid value", http.StatusBadRequest)
 				return
 			}
-			storage.UpdateCounter(name, delta)
+			s.storage.UpdateCounter(name, delta)
 		default:
 			http.Error(w, "unknown metric type", http.StatusBadRequest)
 			return
@@ -85,20 +47,20 @@ func updateHandler(storage Storage) http.HandlerFunc {
 	}
 }
 
-func valueHandler(store Storage) http.HandlerFunc {
+func (s *Server) valueHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		mType := chi.URLParam(r, "type")
 		name := chi.URLParam(r, "name")
 
 		switch mType {
 		case "gauge":
-			if v, ok := store.GetGauge(name); ok {
+			if v, ok := s.storage.GetGauge(name); ok {
 				w.WriteHeader(http.StatusOK)
 				fmt.Fprintf(w, "%g", v)
 				return
 			}
 		case "counter":
-			if v, ok := store.GetCounter(name); ok {
+			if v, ok := s.storage.GetCounter(name); ok {
 				w.WriteHeader(http.StatusOK)
 				fmt.Fprintf(w, "%d", v)
 				return
@@ -109,7 +71,7 @@ func valueHandler(store Storage) http.HandlerFunc {
 	}
 }
 
-func pageHandler(s Storage) http.HandlerFunc {
+func (s *Server) pageHandler() http.HandlerFunc {
 	type MetricRow struct {
 		Name  string
 		Type  string
@@ -117,7 +79,7 @@ func pageHandler(s Storage) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		gauges, counters := s.GetAll()
+		gauges, counters := s.storage.GetAll()
 
 		var rows []MetricRow
 		for name, v := range gauges {
@@ -157,14 +119,4 @@ func pageHandler(s Storage) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		t.Execute(w, rows)
 	}
-}
-
-func router() http.Handler {
-	r := chi.NewRouter()
-	s := NewMemStorage()
-	r.Post("/update/{type}/{name}/{value}", updateHandler(s))
-	r.Get("/value/{type}/{name}", valueHandler(s))
-	r.Get("/", pageHandler(s))
-
-	return r
 }

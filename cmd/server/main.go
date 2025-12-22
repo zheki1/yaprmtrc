@@ -24,9 +24,13 @@ func main() {
 		serverAddr = envAddr
 	}
 
-	log.Printf("Starting server on %s\n", serverAddr)
-
-	if err := http.ListenAndServe(serverAddr, router()); err != nil {
+	logger, err := NewLogger()
+	if err != nil {
 		log.Fatal(err)
 	}
+	defer logger.Sync()
+	storage := NewMemStorage()
+
+	log.Printf("Starting server on %s\n", serverAddr)
+	log.Fatal(http.ListenAndServe(serverAddr, router(storage, logger)))
 }
