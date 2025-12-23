@@ -1,4 +1,4 @@
-module github.com/zheki1/yaprmtrc.git
+module github.com/zheki1/yaprmtrc.git //yaprmtrc
 
 go 1.24.10
 

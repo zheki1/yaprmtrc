@@ -13,9 +13,11 @@ func router(storage Storage, logger Logger) http.Handler {
 
 	s := &Server{storage: storage}
 
-	r.Post("/update/{type}/{name}/{value}", s.updateHandler())
-	r.Get("/value/{type}/{name}", s.valueHandler())
-	r.Get("/", s.pageHandler())
+	r.Post("/update/{type}/{name}/{value}", s.updateHandler)
+	r.Post("/update", s.updateHandlerJSON)
+	r.Post("/value", s.valueHandlerJSON)
+	r.Get("/value/{type}/{name}", s.valueHandler)
+	r.Get("/", s.pageHandler)
 
 	return r
 }

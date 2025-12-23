@@ -1,95 +1,178 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/zheki1/yaprmtrc.git/internal/models"
 )
 
 type Server struct {
 	storage Storage
 }
 
-func (s *Server) updateHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		metricType := chi.URLParam(r, "type")
-		name := chi.URLParam(r, "name")
-		valueStr := chi.URLParam(r, "value")
-		if name == "" {
-			http.Error(w, "Metric name not found", http.StatusNotFound)
+func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "content type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	var m models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	if m.ID == "" || m.MType == "" {
+		http.Error(w, "id and type are required", http.StatusBadRequest)
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		value, ok := s.storage.GetGauge(m.ID)
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
+		m.Value = &value
 
-		switch metricType {
-		case "gauge":
-			v, err := strconv.ParseFloat(valueStr, 64)
-			if err != nil {
-				http.Error(w, "invalid value", http.StatusBadRequest)
-				return
-			}
-			s.storage.UpdateGauge(name, v)
-		case "counter":
-			delta, err := strconv.ParseInt(valueStr, 10, 64)
-			if err != nil {
-				http.Error(w, "invalid value", http.StatusBadRequest)
-				return
-			}
-			s.storage.UpdateCounter(name, delta)
-		default:
-			http.Error(w, "unknown metric type", http.StatusBadRequest)
+	case models.Counter:
+		delta, ok := s.storage.GetCounter(m.ID)
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
+		m.Delta = &delta
 
-		w.WriteHeader(http.StatusOK)
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) valueHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		mType := chi.URLParam(r, "type")
-		name := chi.URLParam(r, "name")
+func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "content type must be application/json", http.StatusBadRequest)
+		return
+	}
 
-		switch mType {
-		case "gauge":
-			if v, ok := s.storage.GetGauge(name); ok {
-				w.WriteHeader(http.StatusOK)
-				fmt.Fprintf(w, "%g", v)
-				return
-			}
-		case "counter":
-			if v, ok := s.storage.GetCounter(name); ok {
-				w.WriteHeader(http.StatusOK)
-				fmt.Fprintf(w, "%d", v)
-				return
-			}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "cannot read body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var m models.Metrics
+	if err := json.Unmarshal(body, &m); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if m.Value == nil {
+			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+			return
 		}
+		s.storage.UpdateGauge(m.ID, *m.Value)
 
-		http.Error(w, "metric not found", http.StatusNotFound)
+	case models.Counter:
+		if m.Delta == nil {
+			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			return
+		}
+		s.storage.UpdateCounter(m.ID, *m.Delta)
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) pageHandler() http.HandlerFunc {
+func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
+	mType := chi.URLParam(r, "type")
+	name := chi.URLParam(r, "name")
+	valueStr := chi.URLParam(r, "value")
+	if name == "" {
+		http.Error(w, "Metric name not found", http.StatusNotFound)
+		return
+	}
+
+	switch mType {
+	case models.Gauge:
+		v, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			http.Error(w, "invalid value", http.StatusBadRequest)
+			return
+		}
+		s.storage.UpdateGauge(name, v)
+	case models.Counter:
+		delta, err := strconv.ParseInt(valueStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid value", http.StatusBadRequest)
+			return
+		}
+		s.storage.UpdateCounter(name, delta)
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) valueHandler(w http.ResponseWriter, r *http.Request) {
+	mType := chi.URLParam(r, "type")
+	name := chi.URLParam(r, "name")
+
+	switch mType {
+	case models.Gauge:
+		if v, ok := s.storage.GetGauge(name); ok {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "%g", v)
+			return
+		}
+	case models.Counter:
+		if v, ok := s.storage.GetCounter(name); ok {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "%d", v)
+			return
+		}
+	}
+
+	http.Error(w, "metric not found", http.StatusNotFound)
+}
+
+func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 	type MetricRow struct {
 		Name  string
 		Type  string
 		Value string
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		gauges, counters := s.storage.GetAll()
+	gauges, counters := s.storage.GetAll()
 
-		var rows []MetricRow
-		for name, v := range gauges {
-			rows = append(rows, MetricRow{name, "gauge", fmt.Sprintf("%f", v)})
-		}
-		for name, v := range counters {
-			rows = append(rows, MetricRow{name, "counter", fmt.Sprintf("%d", v)})
-		}
+	var rows []MetricRow
+	for name, v := range gauges {
+		rows = append(rows, MetricRow{name, models.Gauge, fmt.Sprintf("%f", v)})
+	}
+	for name, v := range counters {
+		rows = append(rows, MetricRow{name, models.Counter, fmt.Sprintf("%d", v)})
+	}
 
-		tpl := `
+	tpl := `
 		<!DOCTYPE html>
 		<html>
 		<head><title>Metrics</title></head>
@@ -115,8 +198,7 @@ func (s *Server) pageHandler() http.HandlerFunc {
 		</html>
 		`
 
-		t := template.Must(template.New("index").Parse(tpl))
-		w.WriteHeader(http.StatusOK)
-		t.Execute(w, rows)
-	}
+	t := template.Must(template.New("index").Parse(tpl))
+	w.WriteHeader(http.StatusOK)
+	t.Execute(w, rows)
 }
