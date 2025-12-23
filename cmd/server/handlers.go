@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -72,6 +74,10 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	var m models.Metrics
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		if errors.Is(err, io.EOF) {
+			http.Error(w, "empty request body", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
