@@ -1,36 +1,45 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"net/http"
-	"os"
+	"time"
 )
 
 func main() {
-	// default values
-	serverAddr := "localhost:8080"
+	cfg := LoadConfig()
 
-	// flags
-	flag.StringVar(&serverAddr, "a", serverAddr, "HTTP server address")
-	flag.Parse()
-
-	if len(flag.Args()) != 0 {
-		log.Fatalf("unknown flags: %v", flag.Args())
-	}
-
-	// env
-	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
-		serverAddr = envAddr
-	}
-
-	logger, err := NewLogger()
-	if err != nil {
-		log.Fatal(err)
-	}
+	logger, _ := NewLogger()
 	defer logger.Sync()
-	storage := NewMemStorage()
 
-	log.Printf("Starting server on %s\n", serverAddr)
-	log.Fatal(http.ListenAndServe(serverAddr, router(storage, logger)))
+	storage := NewMemStorage()
+	fileStorage := NewFileStorage(cfg.FileStoragePath)
+
+	if cfg.Restore {
+		if metrics, err := fileStorage.Load(); err == nil {
+			storage.Import(metrics)
+			logger.Infow("metrics restored", len(metrics))
+		}
+	}
+
+	if cfg.StoreInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(cfg.StoreInterval)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				metrics := storage.Export()
+				_ = fileStorage.Save(metrics)
+			}
+		}()
+	}
+
+	server := &Server{
+		storage:     storage,
+		fileStorage: fileStorage,
+		syncSave:    cfg.StoreInterval == 0,
+	}
+
+	log.Printf("Starting server on %s\n", cfg.Address)
+	log.Fatal(http.ListenAndServe(cfg.Address, router(server, logger)))
 }

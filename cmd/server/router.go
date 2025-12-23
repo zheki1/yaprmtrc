@@ -7,20 +7,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func router(storage Storage, logger Logger) http.Handler {
+func router(server *Server, logger Logger) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(logger))
 	r.Use(GzipMiddleware)
 	r.Use(middleware.StripSlashes)
 
-	s := &Server{storage: storage}
-
-	r.Post("/update/{type}/{name}/{value}", s.updateHandler)
-	r.Post("/update", s.updateHandlerJSON)
-	r.Post("/value", s.valueHandlerJSON)
-	r.Get("/value/{type}/{name}", s.valueHandler)
-	r.Get("/", s.pageHandler)
+	r.Post("/update/{type}/{name}/{value}", server.updateHandler)
+	r.Post("/update", server.updateHandlerJSON)
+	r.Post("/value", server.valueHandlerJSON)
+	r.Get("/value/{type}/{name}", server.valueHandler)
+	r.Get("/", server.pageHandler)
 
 	return r
 }
