@@ -1,9 +1,11 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -68,10 +70,23 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var reader io.ReadCloser
+	switch r.Header.Get("Content-Encoding") {
+	case "gzip":
+		gzr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gzr.Close()
+		reader = gzr
+	default:
+		reader = r.Body
+	}
 	defer r.Body.Close()
 
 	var m models.Metrics
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+	if err := json.NewDecoder(reader).Decode(&m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

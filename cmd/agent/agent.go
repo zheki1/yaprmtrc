@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -101,7 +102,7 @@ func (a *Agent) sendAllMetrics() {
 			MType: models.Gauge,
 			Value: &value,
 		}
-		a.sendMetric(metric)
+		a.sendMetric(metric, false)
 	}
 
 	for name, value := range a.Counter {
@@ -110,21 +111,32 @@ func (a *Agent) sendAllMetrics() {
 			MType: models.Counter,
 			Delta: &value,
 		}
-		a.sendMetric(metric)
+		a.sendMetric(metric, true)
 	}
 }
 
-func (a *Agent) sendMetric(metric models.Metrics) {
-	body, err := json.Marshal(metric)
+func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
+	bodyJSON, err := json.Marshal(metric)
 	if err != nil {
 		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
 	}
 
+	var buf bytes.Buffer
+	if compressReq {
+		gz := gzip.NewWriter(&buf)
+		if _, err := gz.Write(bodyJSON); err != nil {
+			log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
+		}
+		gz.Close()
+	} else {
+		buf.Write(bodyJSON)
+	}
+
 	req, err := http.NewRequest(
 		http.MethodPost,
 		fmt.Sprintf("http://%s/update", a.cfg.Addr),
-		bytes.NewReader(body),
+		&buf,
 	)
 	if err != nil {
 		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
@@ -132,6 +144,9 @@ func (a *Agent) sendMetric(metric models.Metrics) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if compressReq {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -144,4 +159,32 @@ func (a *Agent) sendMetric(metric models.Metrics) {
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
 	}
+}
+
+func (a *Agent) pushMetricGZIP(metric models.Metrics) {
+	bodyJSON, err := json.Marshal(metric)
+	if err != nil {
+		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(bodyJSON); err != nil {
+		log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+	gz.Close()
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+a.cfg.Addr+"/update", &buf)
+	if err != nil {
+		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+	defer resp.Body.Close()
 }
