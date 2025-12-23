@@ -96,7 +96,7 @@ func (a *Agent) collectMetrics() {
 
 func (a *Agent) sendAllMetrics() {
 	for name, value := range a.Gauge {
-		var metric models.Metrics = models.Metrics{
+		metric := models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Value: &value,
@@ -105,7 +105,7 @@ func (a *Agent) sendAllMetrics() {
 	}
 
 	for name, value := range a.Counter {
-		var metric models.Metrics = models.Metrics{
+		metric := models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Delta: &value,
