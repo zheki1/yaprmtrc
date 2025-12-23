@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -27,7 +26,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	var m models.Metrics
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -60,6 +59,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
@@ -68,16 +68,11 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "cannot read body", http.StatusBadRequest)
-		return
-	}
 	defer r.Body.Close()
 
 	var m models.Metrics
-	if err := json.Unmarshal(body, &m); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
