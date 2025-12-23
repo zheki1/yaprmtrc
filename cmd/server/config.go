@@ -17,8 +17,8 @@ type Config struct {
 func LoadConfig() *Config {
 	cfg := &Config{
 		Address:         "localhost:8080",
-		StoreInterval:   30 * time.Second,
-		FileStoragePath: "/metrics-db.json",
+		StoreInterval:   300 * time.Second,
+		FileStoragePath: "./metrics-recovery.json",
 		Restore:         true,
 	}
 
