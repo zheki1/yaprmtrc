@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,10 +21,37 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "content type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	defer r.Body.Close()
 
+	if len(body) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
+		return
+	}
+
 	var m models.Metrics
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+	if err := json.Unmarshal(body, &m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -61,14 +89,13 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
 	}
 
-	var reader io.ReadCloser
-	switch r.Header.Get("Content-Encoding") {
-	case "gzip":
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
 		gzr, err := gzip.NewReader(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -76,37 +103,54 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		defer gzr.Close()
 		reader = gzr
-	default:
-		reader = r.Body
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	defer r.Body.Close()
 
+	if len(body) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
+		return
+	}
+
 	var m models.Metrics
-	if err := json.NewDecoder(reader).Decode(&m); err != nil {
+	if err := json.Unmarshal(body, &m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if m.ID == "" || m.MType == "" {
+		http.Error(w, "id and type are required", http.StatusBadRequest)
 		return
 	}
 
 	switch m.MType {
 	case models.Gauge:
 		if m.Value == nil {
-			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+			http.Error(w, "value is required", http.StatusBadRequest)
 			return
 		}
 		s.storage.UpdateGauge(m.ID, *m.Value)
 
 	case models.Counter:
 		if m.Delta == nil {
-			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			http.Error(w, "delta is required", http.StatusBadRequest)
 			return
 		}
 		s.storage.UpdateCounter(m.ID, *m.Delta)
-	}
 
-	s.saveIfNeeded()
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
 }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +251,7 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 		`
 
 	t := template.Must(template.New("index").Parse(tpl))
+	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	t.Execute(w, rows)
 }
