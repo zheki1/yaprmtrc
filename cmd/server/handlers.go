@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,8 +20,7 @@ type Server struct {
 }
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Get metric json start")
-	if r.Header.Get("Content-Type") != "application/json" {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
 	}
@@ -29,10 +28,9 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	defer r.Body.Close()
-
-	log.Printf("Get metric json step 1 - body - %s", string(body))
 
 	if len(body) == 0 {
 		http.Error(w, "empty request body", http.StatusBadRequest)
@@ -51,8 +49,6 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Get metric json step 2 %s/%s\n", m.ID, m.MType)
-
 	switch m.MType {
 	case models.Gauge:
 		value, ok := s.storage.GetGauge(m.ID)
@@ -64,30 +60,24 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	case models.Counter:
 		delta, ok := s.storage.GetCounter(m.ID)
-		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
 		m.Delta = &delta
-		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 
 	default:
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Get metric json step 3 %s/%s\n", m.ID, m.MType)
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(m)
-
-	log.Printf("Get metric json Finished")
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
 	}
@@ -95,6 +85,7 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	defer r.Body.Close()
 
