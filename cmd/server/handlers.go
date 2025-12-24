@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -24,7 +25,18 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -80,7 +92,18 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -123,7 +146,9 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
 }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +249,7 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 		`
 
 	t := template.Must(template.New("index").Parse(tpl))
+	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	t.Execute(w, rows)
 }
