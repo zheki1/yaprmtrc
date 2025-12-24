@@ -16,12 +16,6 @@ import (
 )
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "content type must be application/json", http.StatusBadRequest)
-		return
-	}
-
-func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
@@ -147,6 +141,8 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
 		return
 	}
+
+	s.saveIfNeeded()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
