@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -150,24 +149,28 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buf := bytes.NewBuffer(body)
 	var m models.Metrics
-	if err := json.NewDecoder(buf).Decode(&m); err != nil {
+	if err := json.Unmarshal(body, &m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if m.ID == "" || m.MType == "" {
+		http.Error(w, "id and type are required", http.StatusBadRequest)
 		return
 	}
 
 	switch m.MType {
 	case models.Gauge:
 		if m.Value == nil {
-			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+			http.Error(w, "value is required", http.StatusBadRequest)
 			return
 		}
 		s.storage.UpdateGauge(m.ID, *m.Value)
 
 	case models.Counter:
 		if m.Delta == nil {
-			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			http.Error(w, "delta is required", http.StatusBadRequest)
 			return
 		}
 		s.storage.UpdateCounter(m.ID, *m.Delta)
@@ -179,7 +182,57 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
 }
+
+// func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
+// 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+// 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	body, err := io.ReadAll(r.Body)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+// 	defer r.Body.Close()
+
+// 	if len(body) == 0 {
+// 		http.Error(w, "empty request body", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	buf := bytes.NewBuffer(body)
+// 	var m models.Metrics
+// 	if err := json.NewDecoder(buf).Decode(&m); err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	switch m.MType {
+// 	case models.Gauge:
+// 		if m.Value == nil {
+// 			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+// 			return
+// 		}
+// 		s.storage.UpdateGauge(m.ID, *m.Value)
+
+// 	case models.Counter:
+// 		if m.Delta == nil {
+// 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+// 			return
+// 		}
+// 		s.storage.UpdateCounter(m.ID, *m.Delta)
+
+// 	default:
+// 		http.Error(w, "unknown metric type", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(http.StatusOK)
+// }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
