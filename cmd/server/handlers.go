@@ -25,9 +25,8 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var reader io.ReadCloser
-	switch r.Header.Get("Content-Encoding") {
-	case "gzip":
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
 		gzr, err := gzip.NewReader(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -35,10 +34,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		defer gzr.Close()
 		reader = gzr
-	default:
-		reader = r.Body
 	}
-	defer r.Body.Close()
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
@@ -96,9 +92,8 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var reader io.ReadCloser
-	switch r.Header.Get("Content-Encoding") {
-	case "gzip":
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
 		gzr, err := gzip.NewReader(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -106,16 +101,14 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		defer gzr.Close()
 		reader = gzr
-	default:
-		reader = r.Body
 	}
-	defer r.Body.Close()
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	defer r.Body.Close()
 
 	if len(body) == 0 {
 		http.Error(w, "empty request body", http.StatusBadRequest)

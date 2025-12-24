@@ -102,7 +102,7 @@ func (a *Agent) sendAllMetrics() {
 			MType: models.Gauge,
 			Value: &value,
 		}
-		a.sendMetric(metric, false)
+		a.sendMetric(metric, true)
 	}
 
 	for name, value := range a.Counter {
@@ -146,6 +146,7 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 	req.Header.Set("Content-Type", "application/json")
 	if compressReq {
 		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
 	}
 
 	resp, err := a.client.Do(req)
