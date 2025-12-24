@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -91,11 +92,14 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		s.storage.UpdateGauge(m.ID, *m.Value)
 
 	case models.Counter:
+		log.Printf("Update counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		if m.Delta == nil {
 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			log.Printf("Error update counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 			return
 		}
 		s.storage.UpdateCounter(m.ID, *m.Delta)
+		log.Printf("Updated counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -23,7 +23,7 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 	if lrw.status == 0 {
 		lrw.status = http.StatusOK
 	}
-	lrw.body.Write(b) // ⬅ сохраняем тело ответа
+	lrw.body.Write(b)
 	n, err := lrw.ResponseWriter.Write(b)
 	lrw.size += n
 	return n, err
