@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"runtime"
-	"strconv"
 	"time"
+
+	"github.com/zheki1/yaprmtrc.git/internal/models"
 )
 
 type Agent struct {
@@ -41,11 +44,11 @@ func (a *Agent) Start() {
 	for {
 		select {
 		case <-tickerPoll.C:
-			fmt.Printf("%s", "collect "+time.Now().String())
+			fmt.Printf("%s \n", "collect "+time.Now().String())
 			a.collectMetrics()
 
 		case <-tickerReport.C:
-			fmt.Printf("%s", "send all "+time.Now().String())
+			fmt.Printf("%s \n", "send all "+time.Now().String())
 			a.sendAllMetrics()
 		}
 	}
@@ -93,30 +96,52 @@ func (a *Agent) collectMetrics() {
 
 func (a *Agent) sendAllMetrics() {
 	for name, value := range a.Gauge {
-		a.sendMetric("gauge", name, fmt.Sprintf("%f", value))
+		metric := models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &value,
+		}
+		a.sendMetric(metric)
 	}
 
 	for name, value := range a.Counter {
-		a.sendMetric("counter", name, strconv.FormatInt(value, 10))
+		metric := models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &value,
+		}
+		a.sendMetric(metric)
 	}
 }
 
-func (a *Agent) sendMetric(metricType, name, value string) {
-	url := fmt.Sprintf("http://%s/update/%s/%s/%s",
-		a.cfg.Addr, metricType, name, value)
+func (a *Agent) sendMetric(metric models.Metrics) {
+	body, err := json.Marshal(metric)
+	if err != nil {
+		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
+		return
+	}
 
-	req, _ := http.NewRequest("POST", url, nil)
-	req.Header.Set("Content-Type", "text/plain")
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("http://%s/update", a.cfg.Addr),
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metricType, name, err)
+		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metricType, name)
+		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
 	}
 }

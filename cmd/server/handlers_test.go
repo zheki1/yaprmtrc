@@ -14,9 +14,9 @@ func testRouter(storage Storage) http.Handler {
 	r := chi.NewRouter()
 	s := &Server{storage: storage}
 
-	r.Post("/update/{type}/{name}/{value}", s.updateHandler())
-	r.Get("/value/{type}/{name}", s.valueHandler())
-	r.Get("/", s.pageHandler())
+	r.Post("/update/{type}/{name}/{value}", s.updateHandler)
+	r.Get("/value/{type}/{name}", s.valueHandler)
+	r.Get("/", s.pageHandler)
 
 	return r
 }
