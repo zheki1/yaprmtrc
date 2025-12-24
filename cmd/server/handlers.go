@@ -100,6 +100,10 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		s.storage.UpdateCounter(m.ID, *m.Delta)
 		log.Printf("Updated counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
+
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
