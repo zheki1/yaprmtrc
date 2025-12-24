@@ -249,6 +249,7 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 		`
 
 	t := template.Must(template.New("index").Parse(tpl))
+	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	t.Execute(w, rows)
 }
