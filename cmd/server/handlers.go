@@ -66,8 +66,8 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
-		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		m.Delta = &delta
+		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 
 	default:
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
