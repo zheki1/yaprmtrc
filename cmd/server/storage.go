@@ -46,10 +46,10 @@ func (m *MemStorage) GetAll() (map[string]float64, map[string]int64) {
 	return m.gauges, m.counters
 }
 
-func (ms *MemStorage) Export() []models.Metrics {
+func (m *MemStorage) Export() []models.Metrics {
 	var res []models.Metrics
 
-	for k, v := range ms.gauges {
+	for k, v := range m.gauges {
 		val := v
 		res = append(res, models.Metrics{
 			ID:    k,
@@ -58,7 +58,7 @@ func (ms *MemStorage) Export() []models.Metrics {
 		})
 	}
 
-	for k, v := range ms.counters {
+	for k, v := range m.counters {
 		val := v
 		res = append(res, models.Metrics{
 			ID:    k,
@@ -70,16 +70,16 @@ func (ms *MemStorage) Export() []models.Metrics {
 	return res
 }
 
-func (ms *MemStorage) Import(metrics []models.Metrics) {
-	for _, m := range metrics {
-		switch m.MType {
+func (m *MemStorage) Import(metrics []models.Metrics) {
+	for _, ms := range metrics {
+		switch ms.MType {
 		case models.Gauge:
-			if m.Value != nil {
-				ms.gauges[m.ID] = *m.Value
+			if ms.Value != nil {
+				m.gauges[ms.ID] = *ms.Value
 			}
 		case models.Counter:
-			if m.Delta != nil {
-				ms.counters[m.ID] = *m.Delta
+			if ms.Delta != nil {
+				m.counters[ms.ID] = *ms.Delta
 			}
 		}
 	}
