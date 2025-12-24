@@ -21,15 +21,25 @@ type Server struct {
 }
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Get metric json start")
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	log.Printf("Get metric json step 1 - body - %s", string(body))
+
 	defer r.Body.Close()
 
+	buf := bytes.NewBuffer(body)
+
 	var m models.Metrics
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+	if err := json.NewDecoder(buf).Decode(&m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -38,6 +48,8 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id and type are required", http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("Get metric json step 2 %s/%s\n", m.ID, m.MType)
 
 	switch m.MType {
 	case models.Gauge:
@@ -54,6 +66,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
+		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		m.Delta = &delta
 
 	default:
@@ -61,12 +74,17 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Get metric json step 3 %s/%s\n", m.ID, m.MType)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(m)
+
+	log.Printf("Get metric json Finished")
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Update metric json start")
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
@@ -121,6 +139,8 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	log.Printf("Update metric json Finished")
 }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
