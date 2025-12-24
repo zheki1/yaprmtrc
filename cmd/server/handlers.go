@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -41,7 +40,6 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buf := bytes.NewBuffer(body)
-
 	var m models.Metrics
 	if err := json.NewDecoder(buf).Decode(&m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -98,16 +96,16 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-
 	defer r.Body.Close()
+
+	if len(body) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
+		return
+	}
 
 	buf := bytes.NewBuffer(body)
 	var m models.Metrics
 	if err := json.NewDecoder(buf).Decode(&m); err != nil {
-		if errors.Is(err, io.EOF) {
-			http.Error(w, "empty request body", http.StatusBadRequest)
-			return
-		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
