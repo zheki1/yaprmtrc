@@ -31,10 +31,14 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
+	defer r.Body.Close()
 
 	log.Printf("Get metric json step 1 - body - %s", string(body))
 
-	defer r.Body.Close()
+	if len(body) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
+		return
+	}
 
 	buf := bytes.NewBuffer(body)
 
@@ -62,6 +66,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	case models.Counter:
 		delta, ok := s.storage.GetCounter(m.ID)
+		log.Printf("Get counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
@@ -84,7 +89,6 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Update metric json start")
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
@@ -94,8 +98,6 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-
-	log.Printf("Update metric json step 1 - body - %s", string(body))
 
 	defer r.Body.Close()
 
@@ -110,8 +112,6 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Update metric json step 2 %s/%s\n", m.ID, m.MType)
-
 	switch m.MType {
 	case models.Gauge:
 		if m.Value == nil {
@@ -121,26 +121,19 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		s.storage.UpdateGauge(m.ID, *m.Value)
 
 	case models.Counter:
-		log.Printf("Update counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 		if m.Delta == nil {
 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
-			log.Printf("Error update counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 			return
 		}
 		s.storage.UpdateCounter(m.ID, *m.Delta)
-		log.Printf("Updated counter metric %s/%s/%s\n", m.ID, m.MType, fmt.Sprintf("%d", m.Delta))
 
 	default:
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Update metric json step 3 %s/%s\n", m.ID, m.MType)
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-
-	log.Printf("Update metric json Finished")
 }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
