@@ -7,14 +7,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func router(storage Storage, logger Logger) http.Handler {
+func router(s *Server) http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(LoggingMiddleware(logger))
+	r.Use(LoggingMiddleware(s.logger))
 	r.Use(GzipMiddleware)
 	r.Use(middleware.StripSlashes)
-
-	s := &Server{storage: storage}
 
 	r.Post("/update/{type}/{name}/{value}", s.updateHandler)
 	r.Post("/update", s.updateHandlerJSON)
