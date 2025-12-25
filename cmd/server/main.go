@@ -1,24 +1,36 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
 func main() {
-	cfg := LoadConfig()
+	logger, err := NewLogger()
+	if err != nil {
+		log.Fatalf("cannot init logger: %v", err)
+	}
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			log.Printf("logger sync failed: %v", err)
+		}
+	}()
 
-	logger, _ := NewLogger()
-	defer logger.Sync()
-
+	cfg := LoadConfig(logger)
 	storage := NewMemStorage()
 	fileStorage := NewFileStorage(cfg.FileStoragePath)
 
 	if cfg.Restore {
 		if metrics, err := fileStorage.Load(); err == nil {
 			storage.Import(metrics)
-			logger.Infow("metrics restored", len(metrics))
+			log.Printf("metrics restored %v", len(metrics))
+		} else {
+			log.Printf("cannot restore metrics %s", err.Error())
 		}
 	}
 
@@ -29,17 +41,53 @@ func main() {
 
 			for range ticker.C {
 				metrics := storage.Export()
-				_ = fileStorage.Save(metrics)
+				if err := fileStorage.Save(metrics); err != nil {
+					log.Printf("cannot save metrics into file %s", err.Error())
+				}
 			}
 		}()
 	}
 
 	server := &Server{
+		logger:      logger,
 		storage:     storage,
 		fileStorage: fileStorage,
 		syncSave:    cfg.StoreInterval == 0,
 	}
 
-	log.Printf("Starting server on %s\n", cfg.Address)
-	log.Fatal(http.ListenAndServe(cfg.Address, router(server, logger)))
+	httpServer := &http.Server{
+		Addr:    cfg.Address,
+		Handler: router(server),
+	}
+
+	go func() {
+		log.Printf("Starting server on %s\n", cfg.Address)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Listen failed %s", err.Error())
+		}
+	}()
+
+	// graceful shutdown
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	<-ctx.Done()
+	log.Print("Shutdown signal received")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("http server shutdown failed %s", err.Error())
+	}
+
+	if err := fileStorage.Save(storage.Export()); err != nil {
+		log.Fatalf("Metrics save failed %s", err.Error())
+	} else {
+		log.Print("Metrics saved successfully")
+	}
 }

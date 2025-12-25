@@ -2,6 +2,7 @@ package main
 
 type Server struct {
 	storage     Storage
+	logger      Logger
 	fileStorage *FileStorage
 	syncSave    bool
 }
@@ -9,6 +10,8 @@ type Server struct {
 func (s *Server) saveIfNeeded() {
 	if s.syncSave {
 		metrics := s.storage.Export()
-		_ = s.fileStorage.Save(metrics)
+		if err := s.fileStorage.Save(metrics); err != nil {
+			s.logger.Fatalf("Sync save failed")
+		}
 	}
 }

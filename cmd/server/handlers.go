@@ -28,7 +28,11 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		defer gzr.Close()
+		defer func() {
+			if err := gzr.Close(); err != nil {
+				s.logger.Error("failed to close gzip reader", err.Error())
+			}
+		}()
 		reader = gzr
 	}
 
@@ -37,7 +41,11 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			s.logger.Error("failed to close request body", err.Error())
+		}
+	}()
 
 	if len(body) == 0 {
 		http.Error(w, "empty request body", http.StatusBadRequest)
@@ -79,7 +87,9 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(m)
+	if err := json.NewEncoder(w).Encode(m); err != nil {
+		s.logger.Error("failed to encode response", err.Error())
+	}
 }
 
 func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +105,11 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		defer gzr.Close()
+		defer func() {
+			if err := gzr.Close(); err != nil {
+				s.logger.Error("failed to close gzip reader", err.Error())
+			}
+		}()
 		reader = gzr
 	}
 
@@ -104,7 +118,11 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			s.logger.Error("failed to close request body", err.Error())
+		}
+	}()
 
 	if len(body) == 0 {
 		http.Error(w, "empty request body", http.StatusBadRequest)
@@ -146,7 +164,9 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(m)
+	if err := json.NewEncoder(w).Encode(m); err != nil {
+		s.logger.Error("failed to encode response", err.Error())
+	}
 }
 
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
@@ -249,5 +269,7 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 	t := template.Must(template.New("index").Parse(tpl))
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	t.Execute(w, rows)
+	if err := t.Execute(w, rows); err != nil {
+		s.logger.Error("failed to render template", err.Error())
+	}
 }

@@ -14,7 +14,7 @@ type Config struct {
 	Restore         bool
 }
 
-func LoadConfig() *Config {
+func LoadConfig(logger Logger) *Config {
 	cfg := &Config{
 		Address:         "localhost:8080",
 		StoreInterval:   300 * time.Second,
@@ -36,6 +36,8 @@ func LoadConfig() *Config {
 	if v := os.Getenv("STORE_INTERVAL"); v != "" {
 		if sec, err := strconv.Atoi(v); err == nil {
 			cfg.StoreInterval = time.Duration(sec) * time.Second
+		} else {
+			logger.Fatalf("invalid REPORT_INTERVAL: %s", v)
 		}
 	}
 	if v := os.Getenv("FILE_STORAGE_PATH"); v != "" {
@@ -44,6 +46,8 @@ func LoadConfig() *Config {
 	if v := os.Getenv("RESTORE"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.Restore = b
+		} else {
+			logger.Fatalf("invalid RESTORE: %s", v)
 		}
 	}
 

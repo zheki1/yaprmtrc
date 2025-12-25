@@ -15,26 +15,40 @@ func NewFileStorage(path string) *FileStorage {
 	return &FileStorage{path: path}
 }
 
-func (fs *FileStorage) Save(metrics []models.Metrics) error {
+func (fs *FileStorage) Save(metrics []models.Metrics) (err error) {
 	file, err := os.Create(fs.path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	enc := json.NewEncoder(file)
 	enc.SetIndent("", "  ")
-	return enc.Encode(metrics)
+
+	if err = enc.Encode(metrics); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (fs *FileStorage) Load() ([]models.Metrics, error) {
+func (fs *FileStorage) Load() (metrics []models.Metrics, err error) {
 	file, err := os.Open(fs.path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
-	var metrics []models.Metrics
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
 	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
 		return nil, err
 	}

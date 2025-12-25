@@ -4,6 +4,8 @@ import "go.uber.org/zap"
 
 type Logger interface {
 	Infow(msg string, fields ...any)
+	Fatalf(template string, args ...interface{})
+	Error(args ...interface{})
 }
 
 func NewLogger() (*zap.SugaredLogger, error) {
