@@ -12,6 +12,7 @@ type Config struct {
 	StoreInterval   time.Duration
 	FileStoragePath string
 	Restore         bool
+	DatabaseDSN     string
 }
 
 func LoadConfig(logger Logger) *Config {
@@ -20,6 +21,7 @@ func LoadConfig(logger Logger) *Config {
 		StoreInterval:   300 * time.Second,
 		FileStoragePath: "./metrics-recovery.json",
 		Restore:         true,
+		DatabaseDSN:     "",
 	}
 
 	// flags
@@ -27,6 +29,7 @@ func LoadConfig(logger Logger) *Config {
 	flag.DurationVar(&cfg.StoreInterval, "i", cfg.StoreInterval, "store interval")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore from file")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database dsn")
 	flag.Parse()
 
 	// env priority
@@ -49,6 +52,9 @@ func LoadConfig(logger Logger) *Config {
 		} else {
 			logger.Fatalf("invalid RESTORE: %s", v)
 		}
+	}
+	if v := os.Getenv("DATABASE_DSN"); v != "" {
+		cfg.DatabaseDSN = v
 	}
 
 	return cfg
