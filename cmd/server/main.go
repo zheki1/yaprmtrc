@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func main() {
@@ -48,11 +50,24 @@ func main() {
 		}()
 	}
 
+	var dbConn *pgx.Conn
+	if cfg.DatabaseDSN != "" {
+		conn, err := pgx.Connect(context.Background(), cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatalw(
+				"failed to connect to database",
+				"error", err,
+			)
+		}
+		dbConn = conn
+	}
+
 	server := &Server{
 		logger:      logger,
 		storage:     storage,
 		fileStorage: fileStorage,
 		syncSave:    cfg.StoreInterval == 0,
+		db:          dbConn,
 	}
 
 	httpServer := &http.Server{
@@ -89,5 +104,9 @@ func main() {
 		log.Fatalf("Metrics save failed %s", err.Error())
 	} else {
 		log.Print("Metrics saved successfully")
+	}
+
+	if dbConn != nil {
+		dbConn.Close(context.Background())
 	}
 }

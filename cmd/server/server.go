@@ -1,10 +1,15 @@
 package main
 
+import (
+	"github.com/jackc/pgx/v5"
+)
+
 type Server struct {
 	storage     Storage
 	logger      Logger
 	fileStorage *FileStorage
 	syncSave    bool
+	db          *pgx.Conn
 }
 
 func (s *Server) saveIfNeeded() {

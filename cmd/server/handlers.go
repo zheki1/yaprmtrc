@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -272,4 +274,25 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 	if err := t.Execute(w, rows); err != nil {
 		s.logger.Error("failed to render template", err.Error())
 	}
+}
+
+func (s *Server) pingHandler(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
+	defer cancel()
+
+	if err := s.db.Ping(ctx); err != nil {
+		s.logger.Error(
+			"database ping failed",
+			"error", err,
+		)
+		http.Error(w, "database unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
