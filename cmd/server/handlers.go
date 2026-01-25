@@ -328,3 +328,58 @@ func (s *Server) pingHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 }
+
+func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		http.Error(w, "content type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gzr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer func() {
+			if err := gzr.Close(); err != nil {
+				s.logger.Error("failed to close gzip reader", err.Error())
+			}
+		}()
+		reader = gzr
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			s.logger.Error("failed to close request body", err.Error())
+		}
+	}()
+
+	if len(body) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
+		return
+	}
+
+	var m []models.Metrics
+	if err := json.Unmarshal(body, &m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.storage.UpdateBatch(context.Background(), m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(m); err != nil {
+		s.logger.Error("failed to encode response", err.Error())
+	}
+}

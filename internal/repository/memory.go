@@ -95,6 +95,26 @@ func (m *MemRepository) GetAll(
 	return res, nil
 }
 
+func (m *MemRepository) UpdateBatch(
+	ctx context.Context,
+	metrics []models.Metrics,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, mt := range metrics {
+		switch mt.MType {
+		case models.Gauge:
+			m.gauges[mt.ID] = *mt.Value
+
+		case models.Counter:
+			m.counters[mt.ID] += *mt.Delta
+		}
+	}
+
+	return nil
+}
+
 func (m *MemRepository) Close() error {
 	return nil
 }

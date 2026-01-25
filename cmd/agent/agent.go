@@ -189,3 +189,51 @@ func (a *Agent) pushMetricGZIP(metric models.Metrics) {
 	}
 	defer resp.Body.Close()
 }
+
+func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
+
+	bodyJSON, err := json.Marshal(metrics)
+	if err != nil {
+		log.Printf("Failed serializing batch metric: %v\n", err)
+		return
+	}
+
+	var buf bytes.Buffer
+	if compressReq {
+		gz := gzip.NewWriter(&buf)
+		if _, err := gz.Write(bodyJSON); err != nil {
+			log.Printf("Failed gzip metric: %v\n", err)
+		}
+		gz.Close()
+	} else {
+		buf.Write(bodyJSON)
+	}
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
+		&buf,
+	)
+	if err != nil {
+		log.Printf("Cannot prepare request for batch send metrics: %v\n", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if compressReq {
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		log.Printf("Failed sending batch metrics: %v\n", err)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Server returned status %d for batch metrics", resp.StatusCode)
+	}
+}

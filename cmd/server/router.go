@@ -20,6 +20,7 @@ func router(s *Server) http.Handler {
 	r.Get("/value/{type}/{name}", s.valueHandler)
 	r.Get("/", s.pageHandler)
 	r.Get("/ping", s.pingHandler)
+	r.Post("/updates", s.batchUpdateHandler)
 
 	return r
 }
