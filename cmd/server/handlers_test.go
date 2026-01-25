@@ -71,7 +71,6 @@ func TestUpdateHandlerJSON_Gauge(t *testing.T) {
 		"/update",
 		bytes.NewBuffer(b),
 	)
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -104,7 +103,6 @@ func TestUpdateHandlerJSON_Counter(t *testing.T) {
 		"/update",
 		bytes.NewBuffer(b),
 	)
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -112,7 +110,10 @@ func TestUpdateHandlerJSON_Counter(t *testing.T) {
 
 	s.updateHandlerJSON(w, req)
 
-	if w.Result().StatusCode != http.StatusOK {
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
 		t.Fatal("bad status")
 	}
 }
@@ -134,7 +135,6 @@ func TestUpdateHandlerJSON_Gzip(t *testing.T) {
 		"/update",
 		gzipBody(t, b),
 	)
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
@@ -143,7 +143,10 @@ func TestUpdateHandlerJSON_Gzip(t *testing.T) {
 
 	s.updateHandlerJSON(w, req)
 
-	if w.Result().StatusCode != http.StatusOK {
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
 		t.Fatal("gzip failed")
 	}
 }
@@ -166,7 +169,6 @@ func TestValueHandlerJSON(t *testing.T) {
 		"/value",
 		bytes.NewBuffer(b),
 	)
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -209,7 +211,6 @@ func TestBatchUpdateHandler(t *testing.T) {
 		"/updates",
 		bytes.NewBuffer(b),
 	)
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -217,7 +218,10 @@ func TestBatchUpdateHandler(t *testing.T) {
 
 	s.batchUpdateHandler(w, req)
 
-	if w.Result().StatusCode != http.StatusOK {
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
 		t.Fatal("batch failed")
 	}
 }
@@ -233,13 +237,15 @@ func TestPageHandler(t *testing.T) {
 		"/",
 		nil,
 	)
-	defer req.Body.Close()
 
 	w := httptest.NewRecorder()
 
 	s.pageHandler(w, req)
 
-	if w.Result().StatusCode != http.StatusOK {
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
 		t.Fatal("bad status")
 	}
 
@@ -257,13 +263,15 @@ func TestPingHandler_NoDB(t *testing.T) {
 		"/ping",
 		nil,
 	)
-	defer req.Body.Close()
 
 	w := httptest.NewRecorder()
 
 	s.pingHandler(w, req)
 
-	if w.Result().StatusCode != http.StatusInternalServerError {
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatal("expected 500")
 	}
 }
