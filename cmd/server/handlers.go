@@ -67,16 +67,16 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	switch m.MType {
 	case models.Gauge:
-		value, ok := s.storage.GetGauge(m.ID)
-		if !ok {
+		value, ok, err := s.storage.GetGauge(context.Background(), m.ID)
+		if !ok || err != nil {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
 		m.Value = &value
 
 	case models.Counter:
-		delta, ok := s.storage.GetCounter(m.ID)
-		if !ok {
+		delta, ok, err := s.storage.GetCounter(context.Background(), m.ID)
+		if !ok || err != nil {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
@@ -148,14 +148,21 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "value is required", http.StatusBadRequest)
 			return
 		}
-		s.storage.UpdateGauge(m.ID, *m.Value)
-
+		err = s.storage.UpdateGauge(context.Background(), m.ID, *m.Value)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	case models.Counter:
 		if m.Delta == nil {
 			http.Error(w, "delta is required", http.StatusBadRequest)
 			return
 		}
-		s.storage.UpdateCounter(m.ID, *m.Delta)
+		err = s.storage.UpdateCounter(context.Background(), m.ID, *m.Delta)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 	default:
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
@@ -187,14 +194,22 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid value", http.StatusBadRequest)
 			return
 		}
-		s.storage.UpdateGauge(name, v)
+		err = s.storage.UpdateGauge(context.Background(), name, v)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	case models.Counter:
 		delta, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
 			http.Error(w, "invalid value", http.StatusBadRequest)
 			return
 		}
-		s.storage.UpdateCounter(name, delta)
+		err = s.storage.UpdateCounter(context.Background(), name, delta)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	default:
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
 		return
@@ -209,13 +224,23 @@ func (s *Server) valueHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch mType {
 	case models.Gauge:
-		if v, ok := s.storage.GetGauge(name); ok {
+		v, ok, err := s.storage.GetGauge(context.Background(), name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ok {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintf(w, "%g", v)
 			return
 		}
 	case models.Counter:
-		if v, ok := s.storage.GetCounter(name); ok {
+		v, ok, err := s.storage.GetCounter(context.Background(), name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ok {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintf(w, "%d", v)
 			return
@@ -232,14 +257,21 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 		Value string
 	}
 
-	gauges, counters := s.storage.GetAll()
+	metrics, err := s.storage.GetAll(context.Background())
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	var rows []MetricRow
-	for name, v := range gauges {
-		rows = append(rows, MetricRow{name, models.Gauge, fmt.Sprintf("%f", v)})
-	}
-	for name, v := range counters {
-		rows = append(rows, MetricRow{name, models.Counter, fmt.Sprintf("%d", v)})
+	for _, ms := range metrics {
+		switch ms.MType {
+		case models.Gauge:
+			rows = append(rows, MetricRow{ms.ID, ms.MType, fmt.Sprintf("%f", *ms.Value)})
+		case models.Counter:
+			rows = append(rows, MetricRow{ms.ID, ms.MType, fmt.Sprintf("%d", *ms.Delta)})
+		}
 	}
 
 	tpl := `
