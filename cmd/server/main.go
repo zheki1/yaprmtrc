@@ -54,9 +54,9 @@ func main() {
 	case cfg.DatabaseDSN != "":
 		logger.Info("using postgres storage")
 		storage = repository.NewPostgresRepository(dbConn)
-	case cfg.FileStoragePath != "":
-		logger.Info("using file storage")
-		storage = repository.NewFileRepository(cfg.FileStoragePath)
+	// case cfg.FileStoragePath != "":
+	// 	logger.Info("using file storage")
+	// 	storage = repository.NewFileRepository(cfg.FileStoragePath)
 	default:
 		logger.Info("using memory storage")
 		storage = repository.NewMemRepository()
