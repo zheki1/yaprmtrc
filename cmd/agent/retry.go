@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -28,8 +31,19 @@ func doWithRetry(
 
 		lastErr = err
 
-		if ne, ok := err.(net.Error); !ok || !ne.Temporary() {
-			break
+		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
+		var netErr net.Error
+
+		if errors.As(err, &netErr) && netErr.Timeout() {
+		} else if strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "connection reset") ||
+			strings.Contains(err.Error(), "EOF") {
+		} else {
+			return nil, err
 		}
 
 		if i < len(retryDelays) {

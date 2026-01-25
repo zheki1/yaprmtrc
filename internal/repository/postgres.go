@@ -156,7 +156,7 @@ func (p *PostgresRepository) GetAll(
 				return err
 			}
 
-			tmp = append(res, m)
+			tmp = append(tmp, m)
 		}
 
 		if err := rows.Err(); err != nil {
