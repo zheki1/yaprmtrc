@@ -9,7 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5"
+	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/repository"
+
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func main() {
@@ -24,12 +30,55 @@ func main() {
 	}()
 
 	cfg := LoadConfig(logger)
-	storage := NewMemStorage()
+
+	var dbConn *pgx.Conn
+	if cfg.DatabaseDSN != "" {
+		conn, err := pgx.Connect(context.Background(), cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatalw(
+				"failed to connect to database",
+				"error", err,
+			)
+		}
+		dbConn = conn
+		if dbConn != nil {
+			if err := runMigrations(cfg.DatabaseDSN); err != nil {
+				logger.Fatalw("migration failed", "error", err)
+			}
+		}
+	}
+
+	//storage := NewMemStorage()
+	var storage repository.Repository
+	switch {
+	case cfg.DatabaseDSN != "":
+		logger.Info("using postgres storage")
+		storage = repository.NewPostgresRepository(dbConn)
+	// case cfg.FileStoragePath != "":
+	// 	logger.Info("using file storage")
+	// 	storage = repository.NewFileRepository(cfg.FileStoragePath)
+	default:
+		logger.Info("using memory storage")
+		storage = repository.NewMemRepository()
+	}
+
 	fileStorage := NewFileStorage(cfg.FileStoragePath)
 
 	if cfg.Restore {
 		if metrics, err := fileStorage.Load(); err == nil {
-			storage.Import(metrics)
+			for _, ms := range metrics {
+				switch ms.MType {
+				case models.Gauge:
+					if ms.Value != nil {
+						storage.UpdateGauge(context.Background(), ms.ID, *ms.Value)
+					}
+				case models.Counter:
+					if ms.Delta != nil {
+						storage.UpdateCounter(context.Background(), ms.ID, *ms.Delta)
+					}
+				}
+			}
+			//storage.Import(metrics)
 			log.Printf("metrics restored %v", len(metrics))
 		} else {
 			log.Printf("cannot restore metrics %s", err.Error())
@@ -42,24 +91,15 @@ func main() {
 			defer ticker.Stop()
 
 			for range ticker.C {
-				metrics := storage.Export()
+				metrics, err := storage.GetAll(context.Background())
+				if err != nil {
+					log.Fatal(err.Error())
+				}
 				if err := fileStorage.Save(metrics); err != nil {
 					log.Printf("cannot save metrics into file %s", err.Error())
 				}
 			}
 		}()
-	}
-
-	var dbConn *pgx.Conn
-	if cfg.DatabaseDSN != "" {
-		conn, err := pgx.Connect(context.Background(), cfg.DatabaseDSN)
-		if err != nil {
-			logger.Fatalw(
-				"failed to connect to database",
-				"error", err,
-			)
-		}
-		dbConn = conn
 	}
 
 	server := &Server{
@@ -100,13 +140,34 @@ func main() {
 		log.Fatalf("http server shutdown failed %s", err.Error())
 	}
 
-	if err := fileStorage.Save(storage.Export()); err != nil {
+	metrics, err := storage.GetAll(context.Background())
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	if err := fileStorage.Save(metrics); err != nil {
 		log.Fatalf("Metrics save failed %s", err.Error())
 	} else {
 		log.Print("Metrics saved successfully")
 	}
 
-	if dbConn != nil {
-		dbConn.Close(context.Background())
+	if storage != nil {
+		if err := storage.Close(); err != nil {
+			logger.Errorw("storage close failed", "error", err)
+		}
 	}
+}
+
+func runMigrations(dsn string) error {
+	m, err := migrate.New(
+		"file://migrations",
+		dsn,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
 }
