@@ -149,7 +149,7 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 		req.Header.Set("Accept-Encoding", "gzip")
 	}
 
-	resp, err := a.client.Do(req)
+	resp, err := doWithRetry(a.client, req)
 	if err != nil {
 		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
@@ -183,7 +183,7 @@ func (a *Agent) pushMetricGZIP(metric models.Metrics) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 
-	resp, err := a.client.Do(req)
+	resp, err := doWithRetry(a.client, req)
 	if err != nil {
 		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
 	}
@@ -225,7 +225,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		req.Header.Set("Accept-Encoding", "gzip")
 	}
 
-	resp, err := a.client.Do(req)
+	resp, err := doWithRetry(a.client, req)
 	if err != nil {
 		log.Printf("Failed sending batch metrics: %v\n", err)
 		return

@@ -1,184 +1,277 @@
 package main
 
-// import (
-// 	"io"
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"strings"
-// 	"testing"
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-// 	"github.com/go-chi/chi/v5"
-// )
+	"go.uber.org/zap"
 
-// func testRouter(storage Storage) http.Handler {
-// 	r := chi.NewRouter()
-// 	s := &Server{storage: storage}
+	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/repository"
+)
 
-// 	r.Post("/update/{type}/{name}/{value}", s.updateHandler)
-// 	r.Get("/value/{type}/{name}", s.valueHandler)
-// 	r.Get("/", s.pageHandler)
+func ptrFloat(v float64) *float64 {
+	return &v
+}
 
-// 	return r
-// }
+func ptrInt(v int64) *int64 {
+	return &v
+}
 
-// func TestHandleUpdateGaugeOK(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+func newTestServer() *Server {
 
-// 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123.45", nil)
-// 	rec := httptest.NewRecorder()
+	logger, _ := zap.NewDevelopment()
 
-// 	router.ServeHTTP(rec, req)
+	st := repository.NewMemRepository()
 
-// 	if rec.Code != http.StatusOK {
-// 		t.Fatalf("expected 200, got %d", rec.Code)
-// 	}
+	return &Server{
+		storage: st,
+		logger:  logger.Sugar(),
+	}
+}
 
-// 	val, ok := st.GetGauge("Alloc")
-// 	if !ok || val != 123.45 {
-// 		t.Fatalf("metric not stored correctly")
-// 	}
-// }
+func gzipBody(t *testing.T, b []byte) io.Reader {
 
-// func TestHandleUpdateCounterOK(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+	var buf bytes.Buffer
 
-// 	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/5", nil)
-// 	rec := httptest.NewRecorder()
+	gz := gzip.NewWriter(&buf)
 
-// 	router.ServeHTTP(rec, req)
+	_, err := gz.Write(b)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// 	if rec.Code != http.StatusOK {
-// 		t.Fatalf("expected 200, got %d", rec.Code)
-// 	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-// 	val, ok := st.GetCounter("PollCount")
-// 	if !ok || val != 5 {
-// 		t.Fatalf("counter not stored correctly")
-// 	}
-// }
+	return &buf
+}
 
-// func TestHandleUpdateInvalidType(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+func TestUpdateHandlerJSON_Gauge(t *testing.T) {
 
-// 	req := httptest.NewRequest(http.MethodPost, "/update/unknown/Alloc/1", nil)
-// 	rec := httptest.NewRecorder()
+	s := newTestServer()
 
-// 	router.ServeHTTP(rec, req)
+	m := models.Metrics{
+		ID:    "Alloc",
+		MType: models.Gauge,
+		Value: ptrFloat(12.3),
+	}
 
-// 	if rec.Code != http.StatusBadRequest {
-// 		t.Fatalf("expected 400, got %d", rec.Code)
-// 	}
-// }
+	b, _ := json.Marshal(m)
 
-// func TestHandleUpdateInvalidValue(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/update",
+		bytes.NewBuffer(b),
+	)
 
-// 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/abc", nil)
-// 	rec := httptest.NewRecorder()
+	req.Header.Set("Content-Type", "application/json")
 
-// 	router.ServeHTTP(rec, req)
+	w := httptest.NewRecorder()
 
-// 	if rec.Code != http.StatusBadRequest {
-// 		t.Fatalf("expected 400, got %d", rec.Code)
-// 	}
-// }
+	s.updateHandlerJSON(w, req)
 
-// func TestHandleGetValueGaugeOK(t *testing.T) {
-// 	st := NewMemStorage()
-// 	st.UpdateGauge("Alloc", 10.5)
+	resp := w.Result()
+	defer resp.Body.Close()
 
-// 	router := testRouter(st)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 got %d", resp.StatusCode)
+	}
+}
 
-// 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
-// 	rec := httptest.NewRecorder()
+func TestUpdateHandlerJSON_Counter(t *testing.T) {
 
-// 	router.ServeHTTP(rec, req)
+	s := newTestServer()
 
-// 	body, _ := io.ReadAll(rec.Body)
+	m := models.Metrics{
+		ID:    "PollCount",
+		MType: models.Counter,
+		Delta: ptrInt(5),
+	}
 
-// 	if rec.Code != http.StatusOK {
-// 		t.Fatalf("expected 200, got %d", rec.Code)
-// 	}
+	b, _ := json.Marshal(m)
 
-// 	if strings.TrimSpace(string(body)) != "10.5" {
-// 		t.Fatalf("unexpected body: %s", body)
-// 	}
-// }
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/update",
+		bytes.NewBuffer(b),
+	)
 
-// func TestHandleGetValueCounterOK(t *testing.T) {
-// 	st := NewMemStorage()
-// 	st.UpdateCounter("PollCount", 7)
+	req.Header.Set("Content-Type", "application/json")
 
-// 	router := testRouter(st)
+	w := httptest.NewRecorder()
 
-// 	req := httptest.NewRequest(http.MethodGet, "/value/counter/PollCount", nil)
-// 	rec := httptest.NewRecorder()
+	s.updateHandlerJSON(w, req)
 
-// 	router.ServeHTTP(rec, req)
+	resp := w.Result()
+	defer resp.Body.Close()
 
-// 	body, _ := io.ReadAll(rec.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("bad status")
+	}
+}
 
-// 	if rec.Code != http.StatusOK {
-// 		t.Fatalf("expected 200, got %d", rec.Code)
-// 	}
+func TestUpdateHandlerJSON_Gzip(t *testing.T) {
 
-// 	if strings.TrimSpace(string(body)) != "7" {
-// 		t.Fatalf("unexpected body: %s", body)
-// 	}
-// }
+	s := newTestServer()
 
-// func TestHandleGetValueNotFound(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+	m := models.Metrics{
+		ID:    "Alloc",
+		MType: models.Gauge,
+		Value: ptrFloat(55.5),
+	}
 
-// 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Unknown", nil)
-// 	rec := httptest.NewRecorder()
+	b, _ := json.Marshal(m)
 
-// 	router.ServeHTTP(rec, req)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/update",
+		gzipBody(t, b),
+	)
 
-// 	if rec.Code != http.StatusNotFound {
-// 		t.Fatalf("expected 404, got %d", rec.Code)
-// 	}
-// }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 
-// func TestHandleGetValueInvalidType(t *testing.T) {
-// 	st := NewMemStorage()
-// 	router := testRouter(st)
+	w := httptest.NewRecorder()
 
-// 	req := httptest.NewRequest(http.MethodGet, "/value/invalid/Alloc", nil)
-// 	rec := httptest.NewRecorder()
+	s.updateHandlerJSON(w, req)
 
-// 	router.ServeHTTP(rec, req)
+	resp := w.Result()
+	defer resp.Body.Close()
 
-// 	if rec.Code != http.StatusNotFound {
-// 		t.Fatalf("expected 404, got %d", rec.Code)
-// 	}
-// }
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("gzip failed")
+	}
+}
 
-// func TestHandleGetAll(t *testing.T) {
-// 	st := NewMemStorage()
-// 	st.UpdateGauge("Alloc", 1.23)
-// 	st.UpdateCounter("PollCount", 2)
+func TestValueHandlerJSON(t *testing.T) {
 
-// 	router := testRouter(st)
+	s := newTestServer()
 
-// 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-// 	rec := httptest.NewRecorder()
+	_ = s.storage.UpdateGauge(context.Background(), "Alloc", 99.9)
 
-// 	router.ServeHTTP(rec, req)
+	reqBody := models.Metrics{
+		ID:    "Alloc",
+		MType: models.Gauge,
+	}
 
-// 	body, _ := io.ReadAll(rec.Body)
+	b, _ := json.Marshal(reqBody)
 
-// 	if rec.Code != http.StatusOK {
-// 		t.Fatalf("expected 200, got %d", rec.Code)
-// 	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/value",
+		bytes.NewBuffer(b),
+	)
 
-// 	if !strings.Contains(string(body), "Alloc") ||
-// 		!strings.Contains(string(body), "PollCount") {
-// 		t.Fatalf("response does not contain metrics")
-// 	}
-// }
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	s.valueHandlerJSON(w, req)
+
+	var res models.Metrics
+
+	if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+
+	if *res.Value != 99.9 {
+		t.Fatalf("wrong value %v", *res.Value)
+	}
+}
+
+func TestBatchUpdateHandler(t *testing.T) {
+
+	s := newTestServer()
+
+	data := []models.Metrics{
+		{
+			ID:    "A",
+			MType: models.Gauge,
+			Value: ptrFloat(1.1),
+		},
+		{
+			ID:    "B",
+			MType: models.Counter,
+			Delta: ptrInt(2),
+		},
+	}
+
+	b, _ := json.Marshal(data)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/updates",
+		bytes.NewBuffer(b),
+	)
+
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+
+	s.batchUpdateHandler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("batch failed")
+	}
+}
+
+func TestPageHandler(t *testing.T) {
+
+	s := newTestServer()
+
+	_ = s.storage.UpdateGauge(context.Background(), "A", 1.1)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/",
+		nil,
+	)
+
+	w := httptest.NewRecorder()
+
+	s.pageHandler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("bad status")
+	}
+
+	if !bytes.Contains(w.Body.Bytes(), []byte("Metrics")) {
+		t.Fatal("no html output")
+	}
+}
+
+func TestPingHandler_NoDB(t *testing.T) {
+
+	s := newTestServer()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/ping",
+		nil,
+	)
+
+	w := httptest.NewRecorder()
+
+	s.pingHandler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatal("expected 500")
+	}
+}
