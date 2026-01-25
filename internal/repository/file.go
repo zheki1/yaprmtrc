@@ -171,6 +171,44 @@ func (f *FileRepository) GetCounter(
 	return 0, false, nil
 }
 
+func (f *FileRepository) UpdateBatch(
+	ctx context.Context,
+	metrics []models.Metrics,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	data, err := f.restore()
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	for _, m := range metrics {
+		updated := false
+
+		for i := range data {
+			if data[i].ID == m.ID && data[i].MType == m.MType {
+
+				if m.MType == models.Gauge {
+					data[i].Value = m.Value
+				}
+
+				if m.MType == models.Counter {
+					*data[i].Delta += *m.Delta
+				}
+
+				updated = true
+			}
+		}
+
+		if !updated {
+			data = append(data, m)
+		}
+	}
+
+	return f.save(data)
+}
+
 func (f *FileRepository) Close() error {
 	return nil
 }

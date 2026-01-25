@@ -113,6 +113,44 @@ func (p *PostgresRepository) GetAll(
 	return res, rows.Err()
 }
 
+func (p *PostgresRepository) UpdateBatch(
+	ctx context.Context,
+	metrics []models.Metrics,
+) error {
+	tx, err := p.conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, m := range metrics {
+		switch m.MType {
+
+		case models.Gauge:
+			_, err = tx.Exec(ctx, `
+				INSERT INTO metrics (id, type, value)
+				VALUES ($1, 'gauge', $2)
+				ON CONFLICT (id) DO UPDATE
+				SET value = EXCLUDED.value
+			`, m.ID, *m.Value)
+
+		case models.Counter:
+			_, err = tx.Exec(ctx, `
+				INSERT INTO metrics (id, type, delta)
+				VALUES ($1, 'counter', $2)
+				ON CONFLICT (id) DO UPDATE
+				SET delta = metrics.delta + EXCLUDED.delta
+			`, m.ID, *m.Delta)
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (p *PostgresRepository) Close() error {
 	return p.conn.Close(context.Background())
 }
