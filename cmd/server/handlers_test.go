@@ -71,6 +71,7 @@ func TestUpdateHandlerJSON_Gauge(t *testing.T) {
 		"/update",
 		bytes.NewBuffer(b),
 	)
+	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -79,6 +80,7 @@ func TestUpdateHandlerJSON_Gauge(t *testing.T) {
 	s.updateHandlerJSON(w, req)
 
 	resp := w.Result()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 got %d", resp.StatusCode)
@@ -102,6 +104,7 @@ func TestUpdateHandlerJSON_Counter(t *testing.T) {
 		"/update",
 		bytes.NewBuffer(b),
 	)
+	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -131,6 +134,7 @@ func TestUpdateHandlerJSON_Gzip(t *testing.T) {
 		"/update",
 		gzipBody(t, b),
 	)
+	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
@@ -162,6 +166,7 @@ func TestValueHandlerJSON(t *testing.T) {
 		"/value",
 		bytes.NewBuffer(b),
 	)
+	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -204,6 +209,7 @@ func TestBatchUpdateHandler(t *testing.T) {
 		"/updates",
 		bytes.NewBuffer(b),
 	)
+	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -227,6 +233,7 @@ func TestPageHandler(t *testing.T) {
 		"/",
 		nil,
 	)
+	defer req.Body.Close()
 
 	w := httptest.NewRecorder()
 
@@ -250,6 +257,7 @@ func TestPingHandler_NoDB(t *testing.T) {
 		"/ping",
 		nil,
 	)
+	defer req.Body.Close()
 
 	w := httptest.NewRecorder()
 
