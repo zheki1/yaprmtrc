@@ -162,6 +162,34 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 	}
 }
 
+func (a *Agent) pushMetricGZIP(metric models.Metrics) {
+	bodyJSON, err := json.Marshal(metric)
+	if err != nil {
+		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(bodyJSON); err != nil {
+		log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+	gz.Close()
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+a.cfg.Addr+"/update", &buf)
+	if err != nil {
+		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	resp, err := doWithRetry(a.client, req)
+	if err != nil {
+		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	}
+	defer resp.Body.Close()
+}
+
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 
 	bodyJSON, err := json.Marshal(metrics)
