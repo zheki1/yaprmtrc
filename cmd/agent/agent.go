@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/security"
 )
 
 type Agent struct {
@@ -138,6 +139,9 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 		fmt.Sprintf("http://%s/update", a.cfg.Addr),
 		&buf,
 	)
+	if a.cfg.Key != "" {
+		req.Header.Set("HashSHA256", security.CalcHash(bodyJSON, a.cfg.Key))
+	}
 	if err != nil {
 		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
@@ -160,34 +164,6 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
 	}
-}
-
-func (a *Agent) pushMetricGZIP(metric models.Metrics) {
-	bodyJSON, err := json.Marshal(metric)
-	if err != nil {
-		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(bodyJSON); err != nil {
-		log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	gz.Close()
-
-	req, err := http.NewRequest(http.MethodPost, "http://"+a.cfg.Addr+"/update", &buf)
-	if err != nil {
-		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-
-	resp, err := doWithRetry(a.client, req)
-	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	defer resp.Body.Close()
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
@@ -214,6 +190,9 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
 		&buf,
 	)
+	if a.cfg.Key != "" {
+		req.Header.Set("HashSHA256", security.CalcHash(bodyJSON, a.cfg.Key))
+	}
 	if err != nil {
 		log.Printf("Cannot prepare request for batch send metrics: %v\n", err)
 		return
