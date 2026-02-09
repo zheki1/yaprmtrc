@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
 type MemRepository struct {

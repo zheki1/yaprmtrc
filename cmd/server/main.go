@@ -11,8 +11,8 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5"
-	"github.com/zheki1/yaprmtrc.git/internal/models"
-	"github.com/zheki1/yaprmtrc.git/internal/repository"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/repository"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"

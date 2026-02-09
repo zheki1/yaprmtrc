@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/zheki1/yaprmtrc.git/internal/repository"
+	"github.com/zheki1/yaprmtrc/internal/repository"
 )
 
 type Server struct {

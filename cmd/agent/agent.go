@@ -13,7 +13,7 @@ import (
 
 	resty "github.com/go-resty/resty/v2"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
 type Agent struct {
