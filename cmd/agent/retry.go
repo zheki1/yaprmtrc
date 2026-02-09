@@ -27,6 +27,7 @@ func runWithRetries(fn func() error) {
 
 		if errors.Is(err, context.Canceled) ||
 			errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("Return 1: %v ", err)
 			return
 		}
 
@@ -37,11 +38,12 @@ func runWithRetries(fn func() error) {
 			strings.Contains(err.Error(), "connection reset") ||
 			strings.Contains(err.Error(), "EOF") {
 		} else {
+			log.Printf("Return 2: %v ", err)
 			return
 		}
 
 		if i < len(retryDelays) {
-			log.Printf("Retry number: %v %v", i, len(retryDelays))
+			log.Printf("Retry number end: %v %v %v", i, len(retryDelays), err)
 			time.Sleep(retryDelays[i])
 		}
 	}
