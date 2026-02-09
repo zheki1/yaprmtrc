@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"net"
-	"net/http"
 	"strings"
 	"time"
+
+	resty "github.com/go-resty/resty/v2"
 )
 
 var retryDelays = []time.Duration{
@@ -15,16 +15,11 @@ var retryDelays = []time.Duration{
 	5 * time.Second,
 }
 
-func doWithRetry(
-	client *http.Client,
-	req *http.Request,
-) (*http.Response, error) {
-
+func doWithRetry(req *resty.Request) (*resty.Response, error) {
 	var lastErr error
 
 	for i := 0; i <= len(retryDelays); i++ {
-
-		resp, err := client.Do(req)
+		resp, err := req.Execute(req.Method, req.URL)
 		if err == nil {
 			return resp, nil
 		}
@@ -36,9 +31,8 @@ func doWithRetry(
 			return nil, err
 		}
 
-		var netErr net.Error
-
-		if errors.As(err, &netErr) && netErr.Timeout() {
+		e := &resty.ResponseError{}
+		if errors.As(err, e) && e.Err != nil && strings.Contains(e.Err.Error(), "timeout") {
 		} else if strings.Contains(err.Error(), "connection refused") ||
 			strings.Contains(err.Error(), "connection reset") ||
 			strings.Contains(err.Error(), "EOF") {

@@ -11,12 +11,14 @@ import (
 	"runtime"
 	"time"
 
+	resty "github.com/go-resty/resty/v2"
+
 	"github.com/zheki1/yaprmtrc.git/internal/models"
 )
 
 type Agent struct {
 	cfg    *Config
-	client *http.Client
+	client *resty.Client
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -25,7 +27,7 @@ type Agent struct {
 func NewAgent(cfg *Config) *Agent {
 	return &Agent{
 		cfg:    cfg,
-		client: &http.Client{},
+		client: resty.New(),
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
@@ -133,61 +135,28 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 		buf.Write(bodyJSON)
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("http://%s/update", a.cfg.Addr),
-		&buf,
-	)
+	req := a.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(buf.Bytes())
 	if err != nil {
 		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
 	}
 
-	req.Header.Set("Content-Type", "application/json")
 	if compressReq {
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Accept-Encoding", "gzip")
+		req.SetHeader("Content-Encoding", "gzip")
+		req.SetHeader("Accept-Encoding", "gzip")
 	}
 
-	resp, err := doWithRetry(a.client, req)
+	resp, err := doWithRetry(req)
 	if err != nil {
 		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		return
 	}
 
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
+	if resp.StatusCode() != http.StatusOK {
+		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode(), metric.MType, metric.ID)
 	}
-}
-
-func (a *Agent) pushMetricGZIP(metric models.Metrics) {
-	bodyJSON, err := json.Marshal(metric)
-	if err != nil {
-		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(bodyJSON); err != nil {
-		log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	gz.Close()
-
-	req, err := http.NewRequest(http.MethodPost, "http://"+a.cfg.Addr+"/update", &buf)
-	if err != nil {
-		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-
-	resp, err := doWithRetry(a.client, req)
-	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	defer resp.Body.Close()
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
@@ -209,31 +178,22 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		buf.Write(bodyJSON)
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
-		&buf,
-	)
-	if err != nil {
-		log.Printf("Cannot prepare request for batch send metrics: %v\n", err)
-		return
-	}
+	req := a.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(buf.Bytes())
 
-	req.Header.Set("Content-Type", "application/json")
 	if compressReq {
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Accept-Encoding", "gzip")
+		req.SetHeader("Content-Encoding", "gzip")
+		req.SetHeader("Accept-Encoding", "gzip")
 	}
 
-	resp, err := doWithRetry(a.client, req)
+	resp, err := doWithRetry(req)
 	if err != nil {
 		log.Printf("Failed sending batch metrics: %v\n", err)
 		return
 	}
 
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for batch metrics", resp.StatusCode)
+	if resp.StatusCode() != http.StatusOK {
+		log.Printf("Server returned status %d for batch metrics", resp.StatusCode())
 	}
 }
