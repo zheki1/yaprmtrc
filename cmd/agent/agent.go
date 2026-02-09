@@ -123,6 +123,7 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 		return
 	}
 
+	var body []byte
 	var buf bytes.Buffer
 	if compressReq {
 		gz := gzip.NewWriter(&buf)
@@ -130,7 +131,9 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 			log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
 		}
 		gz.Close()
+		body = buf.Bytes()
 	} else {
+		body = bodyJSON
 		buf.Write(bodyJSON)
 	}
 
@@ -151,7 +154,7 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 	}
 
 	if a.cfg.Key != "" {
-		hash := utils.CalculateHMAC(buf.Bytes(), a.cfg.Key)
+		hash := utils.CalculateHMAC(body, a.cfg.Key)
 		req.Header.Set("HashSHA256", hash)
 	}
 
@@ -176,6 +179,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		return
 	}
 
+	var body []byte
 	var buf bytes.Buffer
 	if compressReq {
 		gz := gzip.NewWriter(&buf)
@@ -183,7 +187,9 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 			log.Printf("Failed gzip metric: %v\n", err)
 		}
 		gz.Close()
+		body = buf.Bytes()
 	} else {
+		body = bodyJSON
 		buf.Write(bodyJSON)
 	}
 
@@ -204,7 +210,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 	}
 
 	if a.cfg.Key != "" {
-		hash := utils.CalculateHMAC(buf.Bytes(), a.cfg.Key)
+		hash := utils.CalculateHMAC(body, a.cfg.Key)
 		req.Header.Set("HashSHA256", hash)
 	}
 
