@@ -25,7 +25,7 @@ type Agent struct {
 func NewAgent(cfg *Config) *Agent {
 	return &Agent{
 		cfg:    cfg,
-		client: &http.Client{},
+		client: &http.Client{Timeout: 10 * time.Second},
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
@@ -116,124 +116,116 @@ func (a *Agent) sendAllMetrics() {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
-	bodyJSON, err := json.Marshal(metric)
-	if err != nil {
-		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
-		return
-	}
-
-	var buf bytes.Buffer
-	if compressReq {
-		gz := gzip.NewWriter(&buf)
-		if _, err := gz.Write(bodyJSON); err != nil {
-			log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
+	runWithRetries(func() error {
+		bodyJSON, err := json.Marshal(metric)
+		if err != nil {
+			return fmt.Errorf("failed serializing metric %s/%s: %w", metric.MType, metric.ID, err)
 		}
-		gz.Close()
-	} else {
-		buf.Write(bodyJSON)
-	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("http://%s/update", a.cfg.Addr),
-		&buf,
-	)
-	if err != nil {
-		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
-		return
-	}
+		var buf bytes.Buffer
+		if compressReq {
+			gz := gzip.NewWriter(&buf)
+			if _, err := gz.Write(bodyJSON); err != nil {
+				return fmt.Errorf("failed gzip metric %s/%s: %w", metric.MType, metric.ID, err)
+			}
+			gz.Close()
+		} else {
+			buf.Write(bodyJSON)
+		}
 
-	req.Header.Set("Content-Type", "application/json")
-	if compressReq {
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Accept-Encoding", "gzip")
-	}
+		req, err := http.NewRequest(
+			http.MethodPost,
+			fmt.Sprintf("http://%s/update", a.cfg.Addr),
+			&buf,
+		)
+		if err != nil {
+			return fmt.Errorf("cannot prepare request for metric %s/%s: %w", metric.MType, metric.ID, err)
+		}
 
-	resp, err := doWithRetry(a.client, req)
-	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
-		return
-	}
+		req.Header.Set("Content-Type", "application/json")
+		if compressReq {
+			req.Header.Set("Content-Encoding", "gzip")
+			req.Header.Set("Accept-Encoding", "gzip")
+		}
 
-	defer resp.Body.Close()
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed sending metric %s/%s: %w", metric.MType, metric.ID, err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
-	}
-}
-
-func (a *Agent) pushMetricGZIP(metric models.Metrics) {
-	bodyJSON, err := json.Marshal(metric)
-	if err != nil {
-		log.Printf("Failed serializing metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(bodyJSON); err != nil {
-		log.Printf("Failed gzip metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	gz.Close()
-
-	req, err := http.NewRequest(http.MethodPost, "http://"+a.cfg.Addr+"/update", &buf)
-	if err != nil {
-		log.Printf("Cannot prepare request for metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-
-	resp, err := doWithRetry(a.client, req)
-	if err != nil {
-		log.Printf("Failed sending metric %s/%s: %v\n", metric.MType, metric.ID, err)
-	}
-	defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
+		}
+		return nil
+	})
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
-
-	bodyJSON, err := json.Marshal(metrics)
-	if err != nil {
-		log.Printf("Failed serializing batch metric: %v\n", err)
-		return
-	}
-
-	var buf bytes.Buffer
-	if compressReq {
-		gz := gzip.NewWriter(&buf)
-		if _, err := gz.Write(bodyJSON); err != nil {
-			log.Printf("Failed gzip metric: %v\n", err)
+	runWithRetries(func() error {
+		bodyJSON, err := json.Marshal(metrics)
+		if err != nil {
+			return fmt.Errorf("failed serializing batch metric: %w", err)
 		}
-		gz.Close()
-	} else {
-		buf.Write(bodyJSON)
+
+		var buf bytes.Buffer
+		if compressReq {
+			gz := gzip.NewWriter(&buf)
+			if _, err := gz.Write(bodyJSON); err != nil {
+				return fmt.Errorf("failed gzip metric: %w", err)
+			}
+			gz.Close()
+		} else {
+			buf.Write(bodyJSON)
+		}
+
+		req, err := http.NewRequest(
+			http.MethodPost,
+			fmt.Sprintf("http://%s/updates", a.cfg.Addr),
+			&buf,
+		)
+		if err != nil {
+			return fmt.Errorf("cannot prepare request for batch send metrics: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		if compressReq {
+			req.Header.Set("Content-Encoding", "gzip")
+			req.Header.Set("Accept-Encoding", "gzip")
+		}
+
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed sending batch metrics: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("server returned status %d for batch metrics", resp.StatusCode)
+		}
+		return nil
+	})
+}
+
+var retryDelays = []time.Duration{
+	time.Second,
+	3 * time.Second,
+	5 * time.Second,
+}
+
+func runWithRetries(fn func() error) {
+	var lastErr error
+
+	for i := 0; i <= len(retryDelays); i++ {
+		err := fn()
+		if err == nil {
+			return
+		}
+		lastErr = err
+		if i < len(retryDelays) {
+			time.Sleep(retryDelays[i])
+		}
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
-		&buf,
-	)
-	if err != nil {
-		log.Printf("Cannot prepare request for batch send metrics: %v\n", err)
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if compressReq {
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Accept-Encoding", "gzip")
-	}
-
-	resp, err := doWithRetry(a.client, req)
-	if err != nil {
-		log.Printf("Failed sending batch metrics: %v\n", err)
-		return
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Server returned status %d for batch metrics", resp.StatusCode)
-	}
+	log.Printf("All retry attempts failed: %v", lastErr)
 }
