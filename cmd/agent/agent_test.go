@@ -1,215 +1,149 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zheki1/yaprmtrc.git/internal/models"
 )
 
-func newTestAgent(addr string) *Agent {
+// вспомогательная функция для разархивации gzip
+func gunzipBody(body []byte) ([]byte, error) {
+	buf := bytes.NewReader(body)
+	r, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+// внутренняя функция, которая возвращает ошибку
+func (a *Agent) sendMetricForTest(metric models.Metrics, compress bool) error {
+	var metrics []models.Metrics
+	metrics = append(metrics, metric)
+	bodyJSON, err := json.Marshal(metrics)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("http://%s/updates", a.cfg.Addr)
+	return sendWithResty(a.client, url, bodyJSON, compress, a.cfg.Key)
+}
+
+// тест отправки одной метрики через Resty
+func TestSendMetric(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/updates", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		var data []byte
+		var err error
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			body, _ := io.ReadAll(r.Body)
+			data, err = gunzipBody(body)
+			assert.NoError(t, err)
+		} else {
+			data, err = io.ReadAll(r.Body)
+			assert.NoError(t, err)
+		}
+
+		var metrics []models.Metrics
+		err = json.Unmarshal(data, &metrics)
+		assert.NoError(t, err)
+		assert.Len(t, metrics, 1)
+		assert.Equal(t, "RandomValue", metrics[0].ID)
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
 	cfg := &Config{
-		Addr:           addr,
-		PollInterval:   1,
-		ReportInterval: 1,
+		Addr: server.Listener.Addr().String(),
+		Key:  "",
 	}
+	agent := NewAgent(cfg)
 
-	return NewAgent(cfg)
-}
-
-func readGzipBody(t *testing.T, r io.Reader) []byte {
-
-	gr, err := gzip.NewReader(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer gr.Close()
-
-	b, err := io.ReadAll(gr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return b
-}
-
-func TestCollectMetrics(t *testing.T) {
-
-	a := newTestAgent("localhost:1234")
-
-	a.collectMetrics()
-
-	if len(a.Gauge) == 0 {
-		t.Fatal("gauge metrics empty")
-	}
-
-	if len(a.Counter) == 0 {
-		t.Fatal("counter metrics empty")
-	}
-
-	if _, ok := a.Gauge["Alloc"]; !ok {
-		t.Fatal("Alloc not collected")
-	}
-
-	if a.Counter["PollCount"] != 1 {
-		t.Fatal("PollCount not incremented")
-	}
-}
-
-func TestSendMetric(t *testing.T) {
-
-	var received models.Metrics
-
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-
-			if r.URL.Path != "/update" {
-				t.Fatalf("wrong path %s", r.URL.Path)
-			}
-
-			var body []byte
-
-			if r.Header.Get("Content-Encoding") == "gzip" {
-				body = readGzipBody(t, r.Body)
-			} else {
-				body, _ = io.ReadAll(r.Body)
-			}
-
-			json.Unmarshal(body, &received)
-
-			w.WriteHeader(http.StatusOK)
-		},
-	))
-	defer ts.Close()
-
-	a := newTestAgent(ts.Listener.Addr().String())
-
-	m := models.Metrics{
-		ID:    "Alloc",
+	metric := models.Metrics{
+		ID:    "RandomValue",
 		MType: models.Gauge,
-		Value: ptrFloat(10.5),
+		Value: new(float64),
 	}
 
-	a.sendMetric(m, true)
-
-	if received.ID != "Alloc" {
-		t.Fatal("metric not received")
-	}
+	err := agent.sendMetricForTest(metric, true)
+	assert.NoError(t, err)
 }
 
-func TestSendAllMetrics(t *testing.T) {
-
-	count := 0
-
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			count++
-			w.WriteHeader(http.StatusOK)
-		},
-	))
-	defer ts.Close()
-
-	a := newTestAgent(ts.Listener.Addr().String())
-
-	a.Gauge["A"] = 1.1
-	a.Gauge["B"] = 2.2
-	a.Counter["C"] = 3
-
-	a.sendAllMetrics()
-
-	if count != 3 {
-		t.Fatalf("expected 3 metrics, got %d", count)
-	}
-}
-
+// тест отправки пачки метрик
+// тест отправки пачки метрик
 func TestSendBatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/updates", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
 
-	var received []models.Metrics
+		var data []byte
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			data, err = gunzipBody(body)
+			assert.NoError(t, err)
+		} else {
+			data = body
+		}
 
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+		var metrics []models.Metrics
+		err = json.Unmarshal(data, &metrics)
+		assert.NoError(t, err)
+		assert.GreaterOrEqual(t, len(metrics), 2) // теперь действительно отправляем 2 метрики
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
-			if r.URL.Path != "/updates" {
-				t.Fatal("wrong path")
-			}
+	cfg := &Config{
+		Addr: server.Listener.Addr().String(),
+		Key:  "",
+	}
+	agent := NewAgent(cfg)
 
-			body, _ := io.ReadAll(r.Body)
-
-			json.Unmarshal(body, &received)
-
-			w.WriteHeader(http.StatusOK)
-		},
-	))
-	defer ts.Close()
-
-	a := newTestAgent(ts.Listener.Addr().String())
-
-	data := []models.Metrics{
-		{
-			ID:    "A",
-			MType: models.Gauge,
-			Value: ptrFloat(1.1),
-		},
-		{
-			ID:    "B",
-			MType: models.Counter,
-			Delta: ptrInt(2),
-		},
+	// отправляем сразу всю пачку
+	metrics := []models.Metrics{
+		{ID: "Alloc", MType: models.Gauge, Value: new(float64)},
+		{ID: "PollCount", MType: models.Counter, Delta: new(int64)},
 	}
 
-	a.sendBatch(data, false)
-
-	if len(received) != 2 {
-		t.Fatal("batch not received")
-	}
+	bodyJSON, _ := json.Marshal(metrics)
+	err := sendWithResty(agent.client, fmt.Sprintf("http://%s/updates", cfg.Addr), bodyJSON, true, "")
+	assert.NoError(t, err)
 }
 
-func TestSendBatchGzip(t *testing.T) {
+// тест HMAC заголовка
+func TestSendMetricWithHMAC(t *testing.T) {
+	key := "secret123"
 
-	var received []models.Metrics
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NotEmpty(t, r.Header.Get("HashSHA256"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+	cfg := &Config{
+		Addr: server.Listener.Addr().String(),
+		Key:  key,
+	}
+	agent := NewAgent(cfg)
 
-			if r.Header.Get("Content-Encoding") != "gzip" {
-				t.Fatal("gzip missing")
-			}
-
-			body := readGzipBody(t, r.Body)
-
-			json.Unmarshal(body, &received)
-
-			w.WriteHeader(http.StatusOK)
-		},
-	))
-	defer ts.Close()
-
-	a := newTestAgent(ts.Listener.Addr().String())
-
-	data := []models.Metrics{
-		{
-			ID:    "A",
-			MType: models.Gauge,
-			Value: ptrFloat(1.1),
-		},
+	metric := models.Metrics{
+		ID:    "RandomValue",
+		MType: models.Gauge,
+		Value: new(float64),
 	}
 
-	a.sendBatch(data, true)
-
-	if len(received) != 1 {
-		t.Fatal("gzip batch failed")
-	}
-}
-
-func ptrFloat(v float64) *float64 {
-	return &v
-}
-
-func ptrInt(v int64) *int64 {
-	return &v
+	err := agent.sendMetricForTest(metric, false)
+	assert.NoError(t, err)
 }

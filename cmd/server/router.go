@@ -13,6 +13,7 @@ func router(s *Server) http.Handler {
 	r.Use(s.hashRequestMiddleware)
 	r.Use(LoggingMiddleware(s.logger))
 	r.Use(GzipMiddleware)
+	r.Use(s.hashResponseMiddleware)
 	r.Use(middleware.StripSlashes)
 
 	r.Post("/update/{type}/{name}/{value}", s.updateHandler)

@@ -1,11 +1,8 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"net"
+	"io"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -15,41 +12,28 @@ var retryDelays = []time.Duration{
 	5 * time.Second,
 }
 
-func doWithRetry(
-	client *http.Client,
-	req *http.Request,
-) (*http.Response, error) {
+func doWithRetry(client *http.Client, newReq func() (*http.Request, error)) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	retries := 3
 
-	var lastErr error
+	for i := 0; i < retries; i++ {
+		req, reqErr := newReq()
+		if reqErr != nil {
+			return nil, reqErr
+		}
 
-	for i := 0; i <= len(retryDelays); i++ {
-
-		resp, err := client.Do(req)
-		if err == nil {
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return resp, nil
 		}
 
-		lastErr = err
-
-		if errors.Is(err, context.Canceled) ||
-			errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+		if resp != nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
 		}
 
-		var netErr net.Error
-
-		if errors.As(err, &netErr) && netErr.Timeout() {
-		} else if strings.Contains(err.Error(), "connection refused") ||
-			strings.Contains(err.Error(), "connection reset") ||
-			strings.Contains(err.Error(), "EOF") {
-		} else {
-			return nil, err
-		}
-
-		if i < len(retryDelays) {
-			time.Sleep(retryDelays[i])
-		}
+		time.Sleep(time.Second * time.Duration(i+1))
 	}
-
-	return nil, lastErr
+	return resp, err
 }
