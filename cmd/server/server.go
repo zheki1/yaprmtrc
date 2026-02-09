@@ -14,6 +14,7 @@ type Server struct {
 	fileStorage *FileStorage
 	syncSave    bool
 	db          *pgx.Conn
+	key         string
 }
 
 func (s *Server) saveIfNeeded() {

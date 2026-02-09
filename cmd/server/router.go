@@ -10,6 +10,7 @@ import (
 func router(s *Server) http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(s.hashRequestMiddleware)
 	r.Use(LoggingMiddleware(s.logger))
 	r.Use(GzipMiddleware)
 	r.Use(middleware.StripSlashes)
