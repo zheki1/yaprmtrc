@@ -32,7 +32,7 @@ func LoadConfig(logger Logger) *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore from file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database dsn")
-	flag.StringVar(&cfg.Key, "d", cfg.Key, "security key")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "security key")
 	flag.Parse()
 
 	// env priority
