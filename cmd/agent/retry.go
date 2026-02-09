@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 )
 
 var retryDelays = []time.Duration{
@@ -22,7 +25,7 @@ func doWithRetry(
 
 	var lastErr error
 
-	for i := 0; i <= len(retryDelays); i++ {
+	for i := 0; i < len(retryDelays); i++ {
 
 		resp, err := client.Do(req)
 		if err == nil {
@@ -43,12 +46,18 @@ func doWithRetry(
 			strings.Contains(err.Error(), "connection reset") ||
 			strings.Contains(err.Error(), "EOF") {
 		} else {
-			return nil, err
+			if pgErr, ok := err.(*pgconn.PgError); ok {
+				if pgerrcode.IsConnectionException(pgErr.Code) {
+					// Connection exception from PostgreSQL
+				} else {
+					return nil, err
+				}
+			} else {
+				return nil, err
+			}
 		}
 
-		if i < len(retryDelays) {
-			time.Sleep(retryDelays[i])
-		}
+		time.Sleep(retryDelays[i])
 	}
 
 	return nil, lastErr
