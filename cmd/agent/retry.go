@@ -15,14 +15,20 @@ var retryDelays = []time.Duration{
 	5 * time.Second,
 }
 
-func doWithRetry(
-	client *http.Client,
-	req *http.Request,
-) (*http.Response, error) {
+func doWithRetry(client *http.Client, originalReq *http.Request) (*http.Response, error) {
 
 	var lastErr error
 
 	for i := 0; i <= len(retryDelays); i++ {
+
+		// Создаем новый запрос на каждой итерации, чтобы избежать повторного использования
+		req, err := http.NewRequest(originalReq.Method, originalReq.URL.String(), originalReq.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		// Копируем заголовки
+		req.Header = originalReq.Header.Clone()
 
 		resp, err := client.Do(req)
 		if err == nil {
