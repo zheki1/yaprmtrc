@@ -169,7 +169,10 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.saveIfNeeded()
+	if err := s.saveIfNeeded(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -224,30 +227,23 @@ func (s *Server) valueHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch mType {
 	case models.Gauge:
-		v, ok, err := s.storage.GetGauge(context.Background(), name)
+		_, _, err := s.storage.GetGauge(context.Background(), name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if ok {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "%g", v)
 			return
 		}
 	case models.Counter:
-		v, ok, err := s.storage.GetCounter(context.Background(), name)
+		_, _, err := s.storage.GetCounter(context.Background(), name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if ok {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "%d", v)
-			return
-		}
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
 	}
 
-	http.Error(w, "metric not found", http.StatusNotFound)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {

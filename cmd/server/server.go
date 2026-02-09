@@ -16,14 +16,18 @@ type Server struct {
 	db          *pgx.Conn
 }
 
-func (s *Server) saveIfNeeded() {
+func (s *Server) saveIfNeeded() error {
 	if s.syncSave {
 		metrics, err := s.storage.GetAll(context.Background())
 		if err != nil {
 			s.logger.Fatalf(err.Error())
+			return err
 		}
 		if err := s.fileStorage.Save(metrics); err != nil {
 			s.logger.Fatalf("Sync save failed")
+			return err
 		}
 	}
+
+	return nil
 }
