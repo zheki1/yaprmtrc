@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/security"
 )
 
 type Agent struct {
@@ -147,6 +148,10 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 			req.Header.Set("Accept-Encoding", "gzip")
 		}
 
+		if a.cfg.Key != "" {
+			req.Header.Set("HashSHA256", security.CalcHash(buf.Bytes(), a.cfg.Key))
+		}
+
 		resp, err := a.client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed sending metric %s/%s: %w", metric.MType, metric.ID, err)
@@ -191,6 +196,10 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		if compressReq {
 			req.Header.Set("Content-Encoding", "gzip")
 			req.Header.Set("Accept-Encoding", "gzip")
+		}
+
+		if a.cfg.Key != "" {
+			req.Header.Set("HashSHA256", security.CalcHash(buf.Bytes(), a.cfg.Key))
 		}
 
 		resp, err := a.client.Do(req)
