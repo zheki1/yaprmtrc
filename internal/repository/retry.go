@@ -33,9 +33,12 @@ func withPgRetry(fn func() error) error {
 			return err
 		}
 
-		// 08 — Connection Exception
+		// 08 — Connection Exception and Integrity Constraint Violations (retryable)
 		if !pgerrcode.IsConnectionException(pgErr.Code) {
-			return err
+			// Specifically retry on UniqueViolation
+			if pgErr.Code != pgerrcode.UniqueViolation {
+				return err
+			}
 		}
 
 		if i < len(retryDelays) {
