@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/zheki1/yaprmtrc.git/internal/models"
@@ -218,14 +221,30 @@ func runWithRetries(fn func() error) {
 
 	for i := 0; i <= len(retryDelays); i++ {
 		err := fn()
+		log.Printf("Retry attempt number start: %v %v %v", i, len(retryDelays), err)
 		if err == nil {
+			log.Printf("Retry attempt number successful: %v %v", i, len(retryDelays))
 			return
 		}
-		lastErr = err
+
+		var netErr net.Error
+
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			log.Printf("Go to retry %v", err)
+		} else if strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "connection reset") ||
+			strings.Contains(err.Error(), "EOF") {
+			log.Printf("Go to retry %v", err)
+		} else {
+			log.Printf("Retry err %v", err)
+			return
+		}
+
 		if i < len(retryDelays) {
+			log.Printf("Retry attempt number end: %v %v %v", i, len(retryDelays), err)
 			time.Sleep(retryDelays[i])
 		}
 	}
 
-	log.Printf("All retry attempts failed: %v", lastErr)
+	log.Printf("retry attempts failed: %v", lastErr)
 }
