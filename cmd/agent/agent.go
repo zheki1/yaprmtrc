@@ -15,14 +15,18 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/zheki1/yaprmtrc/internal/models"
 	"github.com/zheki1/yaprmtrc/internal/retry"
 	"github.com/zheki1/yaprmtrc/internal/security"
 )
 
 type Agent struct {
-	cfg    *Config
-	client *resty.Client
+	cfg       *Config
+	client    *resty.Client
+	metricsCh chan models.Metrics
+	stopCh    chan struct{}
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -33,6 +37,9 @@ func NewAgent(cfg *Config) *Agent {
 		cfg:    cfg,
 		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
 
+		metricsCh: make(chan models.Metrics, 64),
+		stopCh:    make(chan struct{}),
+
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}
@@ -42,63 +49,110 @@ func (a *Agent) Start() {
 	fmt.Printf("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval)
 
-	tickerPoll := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
-	defer tickerPoll.Stop()
+	go a.collectRuntimeMetrics()
+	go a.collectGopsutilMetrics()
 
-	tickerReport := time.NewTicker(time.Duration(a.cfg.ReportInterval) * time.Second)
-	defer tickerReport.Stop()
+	a.startWorkers()
 
-	for {
-		select {
-		case <-tickerPoll.C:
-			fmt.Printf("%s \n", "collect "+time.Now().String())
-			a.collectMetrics()
+	select {}
 
-		case <-tickerReport.C:
-			fmt.Printf("%s \n", "send all "+time.Now().String())
-			a.sendAllMetrics()
+	// tickerPoll := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
+	// defer tickerPoll.Stop()
+
+	// tickerReport := time.NewTicker(time.Duration(a.cfg.ReportInterval) * time.Second)
+	// defer tickerReport.Stop()
+
+	// for {
+	// 	select {
+	// 	case <-tickerPoll.C:
+	// 		fmt.Printf("%s \n", "collect "+time.Now().String())
+	// 		a.collectMetrics()
+
+	// 	case <-tickerReport.C:
+	// 		fmt.Printf("%s \n", "send all "+time.Now().String())
+	// 		a.sendAllMetrics()
+	// 	}
+	// }
+}
+
+func (a *Agent) collectRuntimeMetrics() {
+	var r runtime.MemStats
+	runtime.ReadMemStats(&r)
+	fmt.Printf("%s \n", "collect runtime metrics "+time.Now().String())
+
+	a.pushGauge("Alloc", float64(r.Alloc))
+	a.pushGauge("BuckHashSys", float64(r.BuckHashSys))
+	a.pushGauge("Frees", float64(r.Frees))
+	a.pushGauge("GCCPUFraction", r.GCCPUFraction)
+	a.pushGauge("GCSys", float64(r.GCSys))
+	a.pushGauge("HeapAlloc", float64(r.HeapAlloc))
+	a.pushGauge("HeapIdle", float64(r.HeapIdle))
+	a.pushGauge("HeapInuse", float64(r.HeapInuse))
+	a.pushGauge("HeapObjects", float64(r.HeapObjects))
+	a.pushGauge("HeapReleased", float64(r.HeapReleased))
+	a.pushGauge("HeapSys", float64(r.HeapSys))
+	a.pushGauge("LastGC", float64(r.LastGC))
+	a.pushGauge("Lookups", float64(r.Lookups))
+	a.pushGauge("MCacheInuse", float64(r.MCacheInuse))
+	a.pushGauge("MCacheSys", float64(r.MCacheSys))
+	a.pushGauge("MSpanInuse", float64(r.MSpanInuse))
+	a.pushGauge("MSpanSys", float64(r.MSpanSys))
+	a.pushGauge("Mallocs", float64(r.Mallocs))
+	a.pushGauge("NextGC", float64(r.NextGC))
+	a.pushGauge("NumForcedGC", float64(r.NumForcedGC))
+	a.pushGauge("NumGC", float64(r.NumGC))
+	a.pushGauge("OtherSys", float64(r.OtherSys))
+	a.pushGauge("PauseTotalNs", float64(r.PauseTotalNs))
+	a.pushGauge("StackInuse", float64(r.StackInuse))
+	a.pushGauge("StackSys", float64(r.StackSys))
+	a.pushGauge("Sys", float64(r.Sys))
+	a.pushGauge("TotalAlloc", float64(r.TotalAlloc))
+
+	a.pushGauge("RandomValue", rand.Float64())
+
+	a.pushCounter("PollCount", 1)
+}
+
+func (a *Agent) collectGopsutilMetrics() {
+	ticker := time.NewTicker(time.Duration(a.cfg.PollInterval))
+	defer ticker.Stop()
+	fmt.Printf("%s \n", "collect gopsutil metrics "+time.Now().String())
+
+	for range ticker.C {
+		vm, err := mem.VirtualMemory()
+		if err == nil {
+			a.pushGauge("TotalMemory", float64(vm.Total))
+			a.pushGauge("FreeMemory", float64(vm.Free))
+		}
+
+		cpuPercents, err := cpu.Percent(0, true)
+		if err == nil {
+			for i, p := range cpuPercents {
+				a.pushGauge(
+					fmt.Sprintf("CPUutilization%d", i+1),
+					p,
+				)
+			}
 		}
 	}
 }
 
-func (a *Agent) collectMetrics() {
-	var r runtime.MemStats
-	runtime.ReadMemStats(&r)
+func (a *Agent) pushGauge(name string, v float64) {
+	val := v
+	a.metricsCh <- models.Metrics{
+		ID:    name,
+		MType: models.Gauge,
+		Value: &val,
+	}
+}
 
-	// Gauge metrics
-	a.Gauge["Alloc"] = float64(r.Alloc)
-	a.Gauge["BuckHashSys"] = float64(r.BuckHashSys)
-	a.Gauge["Frees"] = float64(r.Frees)
-	a.Gauge["GCCPUFraction"] = r.GCCPUFraction
-	a.Gauge["GCSys"] = float64(r.GCSys)
-	a.Gauge["HeapAlloc"] = float64(r.HeapAlloc)
-	a.Gauge["HeapIdle"] = float64(r.HeapIdle)
-	a.Gauge["HeapInuse"] = float64(r.HeapInuse)
-	a.Gauge["HeapObjects"] = float64(r.HeapObjects)
-	a.Gauge["HeapReleased"] = float64(r.HeapReleased)
-	a.Gauge["HeapSys"] = float64(r.HeapSys)
-	a.Gauge["LastGC"] = float64(r.LastGC)
-	a.Gauge["Lookups"] = float64(r.Lookups)
-	a.Gauge["MCacheInuse"] = float64(r.MCacheInuse)
-	a.Gauge["MCacheSys"] = float64(r.MCacheSys)
-	a.Gauge["MSpanInuse"] = float64(r.MSpanInuse)
-	a.Gauge["MSpanSys"] = float64(r.MSpanSys)
-	a.Gauge["Mallocs"] = float64(r.Mallocs)
-	a.Gauge["NextGC"] = float64(r.NextGC)
-	a.Gauge["NumForcedGC"] = float64(r.NumForcedGC)
-	a.Gauge["NumGC"] = float64(r.NumGC)
-	a.Gauge["OtherSys"] = float64(r.OtherSys)
-	a.Gauge["PauseTotalNs"] = float64(r.PauseTotalNs)
-	a.Gauge["StackInuse"] = float64(r.StackInuse)
-	a.Gauge["StackSys"] = float64(r.StackSys)
-	a.Gauge["Sys"] = float64(r.Sys)
-	a.Gauge["TotalAlloc"] = float64(r.TotalAlloc)
-
-	// RandomValue gauge
-	a.Gauge["RandomValue"] = rand.Float64()
-
-	// Counter
-	a.Counter["PollCount"]++
+func (a *Agent) pushCounter(name string, d int64) {
+	delta := d
+	a.metricsCh <- models.Metrics{
+		ID:    name,
+		MType: models.Counter,
+		Delta: &delta,
+	}
 }
 
 func (a *Agent) sendAllMetrics() {
@@ -118,6 +172,34 @@ func (a *Agent) sendAllMetrics() {
 			Delta: &value,
 		}
 		a.sendMetric(metric)
+	}
+}
+
+func (a *Agent) startWorkers() {
+	for i := 0; i < a.cfg.RateLimit; i++ {
+		go a.worker()
+	}
+}
+
+func (a *Agent) worker() {
+	batch := make([]models.Metrics, 0)
+
+	timer := time.NewTicker(time.Duration(a.cfg.ReportInterval))
+	defer timer.Stop()
+
+	for {
+		select {
+		case m := <-a.metricsCh:
+			batch = append(batch, m)
+
+		case <-timer.C:
+			if len(batch) == 0 {
+				continue
+			}
+
+			a.sendBatch(batch)
+			batch = nil
+		}
 	}
 }
 
@@ -150,115 +232,46 @@ func (a *Agent) sendMetric(metric models.Metrics) {
 		if !resp.IsSuccess() {
 			return fmt.Errorf("bad status: %s", resp.Status())
 		}
-
-		// req, err := http.NewRequest(
-		// 	http.MethodPost,
-		// 	fmt.Sprintf("http://%s/update", a.cfg.Addr),
-		// 	&buf,
-		// )
-		// if err != nil {
-		// 	return fmt.Errorf("cannot prepare request for metric %s/%s: %w", metric.MType, metric.ID, err)
-		// }
-
-		// req.Header.Set("Content-Type", "application/json")
-		// if compressReq {
-		// 	req.Header.Set("Content-Encoding", "gzip")
-		// 	req.Header.Set("Accept-Encoding", "gzip")
-		// }
-
-		// resp, err := a.client.Do(req)
-		// if err != nil {
-		// 	return fmt.Errorf("failed sending metric %s/%s: %w", metric.MType, metric.ID, err)
-		// }
-		// defer resp.Body.Close()
-
-		// if resp.StatusCode != http.StatusOK {
-		// 	return fmt.Errorf("server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
-		// }
 		return nil
 	}); err != nil {
 		log.Print("failed sending metric")
 	}
 }
 
-func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
-	// runWithRetries(func() error {
-	// 	bodyJSON, err := json.Marshal(metrics)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed serializing batch metric: %w", err)
-	// 	}
+func (a *Agent) sendBatch(metrics []models.Metrics) {
+	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+		payload, err := json.Marshal(metrics)
+		if err != nil {
+			return err
+		}
 
-	// 	var buf bytes.Buffer
-	// 	if compressReq {
-	// 		gz := gzip.NewWriter(&buf)
-	// 		if _, err := gz.Write(bodyJSON); err != nil {
-	// 			return fmt.Errorf("failed gzip metric: %w", err)
-	// 		}
-	// 		gz.Close()
-	// 	} else {
-	// 		buf.Write(bodyJSON)
-	// 	}
+		body, err := gzipPayload(payload)
+		if err != nil {
+			return err
+		}
 
-	// 	req, err := http.NewRequest(
-	// 		http.MethodPost,
-	// 		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
-	// 		&buf,
-	// 	)
-	// 	if err != nil {
-	// 		return fmt.Errorf("cannot prepare request for batch send metrics: %w", err)
-	// 	}
+		req := a.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetBody(body)
 
-	// 	req.Header.Set("Content-Type", "application/json")
-	// 	if compressReq {
-	// 		req.Header.Set("Content-Encoding", "gzip")
-	// 		req.Header.Set("Accept-Encoding", "gzip")
-	// 	}
+		if a.cfg.Key != "" {
+			req.SetHeader("HashSHA256", security.CalcHash(payload, a.cfg.Key))
+		}
 
-	// 	resp, err := a.client.Do(req)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed sending batch metrics: %w", err)
-	// 	}
-	// 	defer resp.Body.Close()
+		resp, err := req.Post("/updates")
+		if err != nil {
+			return err
+		}
 
-	// 	if resp.StatusCode != http.StatusOK {
-	// 		return fmt.Errorf("server returned status %d for batch metrics", resp.StatusCode)
-	// 	}
-	// 	return nil
-	// })
+		if !resp.IsSuccess() {
+			return fmt.Errorf("bad status: %s", resp.Status())
+		}
+		return nil
+	}); err != nil {
+		log.Print("failed sending metric")
+	}
 }
-
-// func runWithRetries(fn func() error) {
-// 	var lastErr error
-
-// 	for i := 0; i <= len(retryDelays); i++ {
-// 		err := fn()
-// 		log.Printf("Retry attempt number start: %v %v %v", i, len(retryDelays), err)
-// 		if err == nil {
-// 			log.Printf("Retry attempt number successful: %v %v", i, len(retryDelays))
-// 			return
-// 		}
-
-// 		var netErr net.Error
-
-// 		if errors.As(err, &netErr) && netErr.Timeout() {
-// 			log.Printf("Go to retry %v", err)
-// 		} else if strings.Contains(err.Error(), "connection refused") ||
-// 			strings.Contains(err.Error(), "connection reset") ||
-// 			strings.Contains(err.Error(), "EOF") {
-// 			log.Printf("Go to retry %v", err)
-// 		} else {
-// 			log.Printf("Retry err %v", err)
-// 			return
-// 		}
-
-// 		if i < len(retryDelays) {
-// 			log.Printf("Retry attempt number end: %v %v %v", i, len(retryDelays), err)
-// 			time.Sleep(retryDelays[i])
-// 		}
-// 	}
-
-// 	log.Printf("retry attempts failed: %v", lastErr)
-// }
 
 func gzipPayload(payload []byte) ([]byte, error) {
 	var buf bytes.Buffer

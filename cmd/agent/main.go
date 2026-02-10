@@ -12,6 +12,7 @@ type Config struct {
 	ReportInterval int
 	PollInterval   int
 	Key            string
+	RateLimit      int
 }
 
 func main() {
@@ -21,6 +22,7 @@ func main() {
 		ReportInterval: 10,
 		PollInterval:   2,
 		Key:            "",
+		RateLimit:      1,
 	}
 
 	// flags
@@ -28,6 +30,7 @@ func main() {
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval in seconds")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Poll interval in seconds")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
@@ -56,6 +59,14 @@ func main() {
 
 	if v := os.Getenv("KEY"); v != "" {
 		cfg.Key = v
+	}
+
+	if v := os.Getenv("RATE_LIMIT"); v != "" {
+		i, err := strconv.Atoi(v)
+		if err != nil || i <= 0 {
+			log.Fatalf("invalid RATE_LIMIT: %s", v)
+		}
+		cfg.RateLimit = i
 	}
 
 	agent := NewAgent(cfg)
