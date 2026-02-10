@@ -19,8 +19,10 @@ func runWithRetries(fn func() error) {
 	var lastErr error
 
 	for i := 0; i <= len(retryDelays); i++ {
+		log.Printf("Retry number start: %v %v", i, len(retryDelays))
 		err := fn()
 		if err == nil {
+			log.Printf("Success: %v %v ", i, len(retryDelays))
 			return
 		}
 		lastErr = err
