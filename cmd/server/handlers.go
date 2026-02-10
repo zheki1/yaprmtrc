@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/security"
 )
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +90,18 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	// Add HashSHA256 header if key is provided
+	if s.cfg.Key != "" {
+		body, err := json.Marshal(m)
+		if err != nil {
+			s.logger.Error("failed to marshal response", err.Error())
+			return
+		}
+		hashValue := security.CalcHash(body, s.cfg.Key)
+		w.Header().Set("HashSHA256", hashValue)
+	}
+
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(m); err != nil {
 		s.logger.Error("failed to encode response", err.Error())
@@ -98,6 +112,24 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "content type must be application/json", http.StatusBadRequest)
 		return
+	}
+
+	// Check HashSHA256 if key is set
+	if s.cfg.Key != "" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Restore body
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
+
+		receivedHash := r.Header.Get("HashSHA256")
+		expectedHash := security.CalcHash(body, s.cfg.Key)
+		if receivedHash == "" || receivedHash != expectedHash {
+			http.Error(w, "hash validation failed", http.StatusBadRequest)
+			return
+		}
 	}
 
 	var reader io.Reader = r.Body
@@ -172,6 +204,17 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	s.saveIfNeeded()
 
 	w.Header().Set("Content-Type", "application/json")
+
+	if s.cfg.Key != "" {
+		body, err := json.Marshal(m)
+		if err != nil {
+			s.logger.Error("failed to marshal response", err.Error())
+			return
+		}
+		hashValue := security.CalcHash(body, s.cfg.Key)
+		w.Header().Set("HashSHA256", hashValue)
+	}
+
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(m); err != nil {
 		s.logger.Error("failed to encode response", err.Error())
@@ -335,6 +378,24 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check HashSHA256 if key is set
+	if s.cfg.Key != "" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Restore body
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
+
+		receivedHash := r.Header.Get("HashSHA256")
+		expectedHash := security.CalcHash(body, s.cfg.Key)
+		if receivedHash == "" || receivedHash != expectedHash {
+			http.Error(w, "hash validation failed", http.StatusBadRequest)
+			return
+		}
+	}
+
 	var reader io.Reader = r.Body
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		gzr, err := gzip.NewReader(r.Body)
@@ -378,6 +439,18 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	// Add HashSHA256 header if key is provided
+	if s.cfg.Key != "" {
+		body, err := json.Marshal(m)
+		if err != nil {
+			s.logger.Error("failed to marshal response", err.Error())
+			return
+		}
+		hashValue := security.CalcHash(body, s.cfg.Key)
+		w.Header().Set("HashSHA256", hashValue)
+	}
+
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(m); err != nil {
 		s.logger.Error("failed to encode response", err.Error())
