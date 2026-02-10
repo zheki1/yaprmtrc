@@ -11,6 +11,7 @@ type Config struct {
 	Addr           string
 	ReportInterval int
 	PollInterval   int
+	Key            string
 }
 
 func main() {
@@ -19,12 +20,14 @@ func main() {
 		Addr:           "localhost:8080",
 		ReportInterval: 10,
 		PollInterval:   2,
+		Key:            "",
 	}
 
 	// flags
 	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "Address of metrics server")
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval in seconds")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
@@ -49,6 +52,10 @@ func main() {
 			log.Fatalf("invalid POLL_INTERVAL: %s", v)
 		}
 		cfg.PollInterval = i
+	}
+
+	if v := os.Getenv("KEY"); v != "" {
+		cfg.Key = v
 	}
 
 	agent := NewAgent(cfg)

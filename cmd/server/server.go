@@ -13,6 +13,7 @@ type Server struct {
 	fileStorage *FileStorage
 	syncSave    bool
 	db          *pgxpool.Pool
+	key         string
 }
 
 func (s *Server) saveIfNeeded() {
