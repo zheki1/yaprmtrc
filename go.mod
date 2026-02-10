@@ -17,10 +17,12 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 )
 
 require (
+	github.com/go-resty/resty/v2 v2.17.1
 	github.com/jackc/pgconn v1.14.3
 	github.com/jackc/pgx/v5 v5.8.0
 	go.uber.org/multierr v1.10.0 // indirect
