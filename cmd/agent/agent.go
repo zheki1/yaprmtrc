@@ -17,6 +17,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/zheki1/yaprmtrc/internal/models"
 	"github.com/zheki1/yaprmtrc/internal/retry"
+	"github.com/zheki1/yaprmtrc/internal/security"
 )
 
 type Agent struct {
@@ -136,6 +137,10 @@ func (a *Agent) sendMetric(metric models.Metrics) {
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetBody(body)
+
+		if a.cfg.Key != "" {
+			req.SetHeader("HashSHA256", security.CalcHash(payload, a.cfg.Key))
+		}
 
 		resp, err := req.Post("/update")
 		if err != nil {

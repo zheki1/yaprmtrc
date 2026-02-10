@@ -11,6 +11,7 @@ func router(s *Server) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
+	r.Use(HashMiddleware(s.key))
 	r.Use(GzipMiddleware)
 	r.Use(middleware.StripSlashes)
 
