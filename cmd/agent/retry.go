@@ -19,7 +19,7 @@ func runWithRetries(fn func() error) {
 	var lastErr error
 
 	for i := 0; i <= len(retryDelays); i++ {
-		log.Printf("Retry number start: %v %v", i, len(retryDelays))
+		log.Printf("Try number start: %v %v", i, len(retryDelays))
 		err := fn()
 		if err == nil {
 			log.Printf("Success: %v %v ", i, len(retryDelays))
@@ -39,6 +39,7 @@ func runWithRetries(fn func() error) {
 		} else if strings.Contains(err.Error(), "connection refused") ||
 			strings.Contains(err.Error(), "connection reset") ||
 			strings.Contains(err.Error(), "EOF") {
+			log.Printf("Point 2: %v ", err.Error())
 		} else {
 			log.Printf("Return 2: %v ", err)
 			return
