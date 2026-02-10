@@ -227,5 +227,5 @@ func runWithRetries(fn func() error) {
 		}
 	}
 
-	log.Printf("All retry attempts failed: %v", lastErr)
+	log.Printf("Retry attempts failed: %v", lastErr)
 }
