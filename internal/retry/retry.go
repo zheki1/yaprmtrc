@@ -1,10 +1,7 @@
-package main
+package retry
 
 import (
 	"context"
-	"errors"
-	"net"
-	"net/url"
 	"time"
 )
 
@@ -14,7 +11,7 @@ var retryDelays = []time.Duration{
 	5 * time.Second,
 }
 
-func DoRetry(ctx context.Context, op func() error) error {
+func DoRetry(ctx context.Context, isRetryable func(error) bool, op func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -26,7 +23,7 @@ func DoRetry(ctx context.Context, op func() error) error {
 		}
 
 		err = op()
-		if err == nil || !isRetryableNetErr(err) {
+		if err == nil || !isRetryable(err) {
 			return err
 		}
 
@@ -52,24 +49,4 @@ func wait(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func isRetryableNetErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.Canceled) {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-
-	var urlErr *url.Error
-	return errors.As(err, &urlErr)
 }

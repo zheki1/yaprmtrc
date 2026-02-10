@@ -5,14 +5,18 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
+	"net/url"
 	"runtime"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/retry"
 )
 
 type Agent struct {
@@ -117,7 +121,7 @@ func (a *Agent) sendAllMetrics() {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics) {
-	if err := DoRetry(context.Background(), func() error {
+	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metric)
 		if err != nil {
 			return err
@@ -262,4 +266,24 @@ func gzipPayload(payload []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func isRetryableNetErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
 }

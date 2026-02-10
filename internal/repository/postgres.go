@@ -2,10 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"strings"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc.git/internal/retry"
 )
 
 type PostgresRepository struct {
@@ -21,7 +25,7 @@ func (p *PostgresRepository) UpdateGauge(
 	name string,
 	value float64,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -42,7 +46,7 @@ func (p *PostgresRepository) UpdateCounter(
 	name string,
 	delta int64,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -65,7 +69,7 @@ func (p *PostgresRepository) GetGauge(
 		v  float64
 		ok bool
 	)
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -99,7 +103,7 @@ func (p *PostgresRepository) GetCounter(
 		v  int64
 		ok bool
 	)
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -130,7 +134,7 @@ func (p *PostgresRepository) GetAll(
 ) ([]models.Metrics, error) {
 	var res []models.Metrics
 
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -174,7 +178,7 @@ func (p *PostgresRepository) UpdateBatch(
 	ctx context.Context,
 	metrics []models.Metrics,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -215,4 +219,23 @@ func (p *PostgresRepository) UpdateBatch(
 
 func (p *PostgresRepository) Close() error {
 	return p.conn.Close(context.Background())
+}
+
+func isRetryablePGErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "08")
+	}
+
+	return false
 }
