@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/jackc/pgx/v5"
-	"github.com/zheki1/yaprmtrc.git/internal/models"
-	"github.com/zheki1/yaprmtrc.git/internal/repository"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/repository"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -31,9 +31,9 @@ func main() {
 
 	cfg := LoadConfig(logger)
 
-	var dbConn *pgx.Conn
+	var dbConn *pgxpool.Pool
 	if cfg.DatabaseDSN != "" {
-		conn, err := pgx.Connect(context.Background(), cfg.DatabaseDSN)
+		conn, err := pgxpool.New(context.Background(), cfg.DatabaseDSN)
 		if err != nil {
 			logger.Fatalw(
 				"failed to connect to database",

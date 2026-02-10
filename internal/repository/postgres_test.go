@@ -5,19 +5,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
-func openTestDB(t *testing.T) *pgx.Conn {
+func openTestDB(t *testing.T) *pgxpool.Pool {
 
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
 		t.Skip("DATABASE_DSN not set")
 	}
 
-	conn, err := pgx.Connect(context.Background(), dsn)
+	conn, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("cannot connect db: %v", err)
 	}
@@ -42,7 +42,7 @@ func openTestDB(t *testing.T) *pgx.Conn {
 func TestPostgresGauge(t *testing.T) {
 
 	conn := openTestDB(t)
-	defer conn.Close(context.Background())
+	defer conn.Close()
 
 	repo := NewPostgresRepository(conn)
 
@@ -70,7 +70,7 @@ func TestPostgresGauge(t *testing.T) {
 func TestPostgresCounter(t *testing.T) {
 
 	conn := openTestDB(t)
-	defer conn.Close(context.Background())
+	defer conn.Close()
 
 	repo := NewPostgresRepository(conn)
 
@@ -103,7 +103,7 @@ func TestPostgresCounter(t *testing.T) {
 func TestPostgresGetAll(t *testing.T) {
 
 	conn := openTestDB(t)
-	defer conn.Close(context.Background())
+	defer conn.Close()
 
 	repo := NewPostgresRepository(conn)
 
@@ -125,7 +125,7 @@ func TestPostgresGetAll(t *testing.T) {
 func TestPostgresBatch(t *testing.T) {
 
 	conn := openTestDB(t)
-	defer conn.Close(context.Background())
+	defer conn.Close()
 
 	repo := NewPostgresRepository(conn)
 

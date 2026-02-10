@@ -3,20 +3,25 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
+	"net"
+	"net/url"
 	"runtime"
 	"time"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/go-resty/resty/v2"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/retry"
 )
 
 type Agent struct {
 	cfg    *Config
-	client *http.Client
+	client *resty.Client
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -25,7 +30,7 @@ type Agent struct {
 func NewAgent(cfg *Config) *Agent {
 	return &Agent{
 		cfg:    cfg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
@@ -102,7 +107,7 @@ func (a *Agent) sendAllMetrics() {
 			MType: models.Gauge,
 			Value: &value,
 		}
-		a.sendMetric(metric, true)
+		a.sendMetric(metric)
 	}
 
 	for name, value := range a.Counter {
@@ -111,121 +116,174 @@ func (a *Agent) sendAllMetrics() {
 			MType: models.Counter,
 			Delta: &value,
 		}
-		a.sendMetric(metric, true)
+		a.sendMetric(metric)
 	}
 }
 
-func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
-	runWithRetries(func() error {
-		bodyJSON, err := json.Marshal(metric)
+func (a *Agent) sendMetric(metric models.Metrics) {
+	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+		payload, err := json.Marshal(metric)
 		if err != nil {
-			return fmt.Errorf("failed serializing metric %s/%s: %w", metric.MType, metric.ID, err)
+			return err
 		}
 
-		var buf bytes.Buffer
-		if compressReq {
-			gz := gzip.NewWriter(&buf)
-			if _, err := gz.Write(bodyJSON); err != nil {
-				return fmt.Errorf("failed gzip metric %s/%s: %w", metric.MType, metric.ID, err)
-			}
-			gz.Close()
-		} else {
-			buf.Write(bodyJSON)
-		}
-
-		req, err := http.NewRequest(
-			http.MethodPost,
-			fmt.Sprintf("http://%s/update", a.cfg.Addr),
-			&buf,
-		)
+		body, err := gzipPayload(payload)
 		if err != nil {
-			return fmt.Errorf("cannot prepare request for metric %s/%s: %w", metric.MType, metric.ID, err)
+			return err
 		}
 
-		req.Header.Set("Content-Type", "application/json")
-		if compressReq {
-			req.Header.Set("Content-Encoding", "gzip")
-			req.Header.Set("Accept-Encoding", "gzip")
-		}
+		req := a.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetBody(body)
 
-		resp, err := a.client.Do(req)
+		resp, err := req.Post("/update")
 		if err != nil {
-			return fmt.Errorf("failed sending metric %s/%s: %w", metric.MType, metric.ID, err)
+			return err
 		}
-		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
+		if !resp.IsSuccess() {
+			return fmt.Errorf("bad status: %s", resp.Status())
 		}
+
+		// req, err := http.NewRequest(
+		// 	http.MethodPost,
+		// 	fmt.Sprintf("http://%s/update", a.cfg.Addr),
+		// 	&buf,
+		// )
+		// if err != nil {
+		// 	return fmt.Errorf("cannot prepare request for metric %s/%s: %w", metric.MType, metric.ID, err)
+		// }
+
+		// req.Header.Set("Content-Type", "application/json")
+		// if compressReq {
+		// 	req.Header.Set("Content-Encoding", "gzip")
+		// 	req.Header.Set("Accept-Encoding", "gzip")
+		// }
+
+		// resp, err := a.client.Do(req)
+		// if err != nil {
+		// 	return fmt.Errorf("failed sending metric %s/%s: %w", metric.MType, metric.ID, err)
+		// }
+		// defer resp.Body.Close()
+
+		// if resp.StatusCode != http.StatusOK {
+		// 	return fmt.Errorf("server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
+		// }
 		return nil
-	})
+	}); err != nil {
+		log.Print("failed sending metric")
+	}
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
-	runWithRetries(func() error {
-		bodyJSON, err := json.Marshal(metrics)
-		if err != nil {
-			return fmt.Errorf("failed serializing batch metric: %w", err)
-		}
+	// runWithRetries(func() error {
+	// 	bodyJSON, err := json.Marshal(metrics)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed serializing batch metric: %w", err)
+	// 	}
 
-		var buf bytes.Buffer
-		if compressReq {
-			gz := gzip.NewWriter(&buf)
-			if _, err := gz.Write(bodyJSON); err != nil {
-				return fmt.Errorf("failed gzip metric: %w", err)
-			}
-			gz.Close()
-		} else {
-			buf.Write(bodyJSON)
-		}
+	// 	var buf bytes.Buffer
+	// 	if compressReq {
+	// 		gz := gzip.NewWriter(&buf)
+	// 		if _, err := gz.Write(bodyJSON); err != nil {
+	// 			return fmt.Errorf("failed gzip metric: %w", err)
+	// 		}
+	// 		gz.Close()
+	// 	} else {
+	// 		buf.Write(bodyJSON)
+	// 	}
 
-		req, err := http.NewRequest(
-			http.MethodPost,
-			fmt.Sprintf("http://%s/updates", a.cfg.Addr),
-			&buf,
-		)
-		if err != nil {
-			return fmt.Errorf("cannot prepare request for batch send metrics: %w", err)
-		}
+	// 	req, err := http.NewRequest(
+	// 		http.MethodPost,
+	// 		fmt.Sprintf("http://%s/updates", a.cfg.Addr),
+	// 		&buf,
+	// 	)
+	// 	if err != nil {
+	// 		return fmt.Errorf("cannot prepare request for batch send metrics: %w", err)
+	// 	}
 
-		req.Header.Set("Content-Type", "application/json")
-		if compressReq {
-			req.Header.Set("Content-Encoding", "gzip")
-			req.Header.Set("Accept-Encoding", "gzip")
-		}
+	// 	req.Header.Set("Content-Type", "application/json")
+	// 	if compressReq {
+	// 		req.Header.Set("Content-Encoding", "gzip")
+	// 		req.Header.Set("Accept-Encoding", "gzip")
+	// 	}
 
-		resp, err := a.client.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed sending batch metrics: %w", err)
-		}
-		defer resp.Body.Close()
+	// 	resp, err := a.client.Do(req)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed sending batch metrics: %w", err)
+	// 	}
+	// 	defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("server returned status %d for batch metrics", resp.StatusCode)
-		}
-		return nil
-	})
+	// 	if resp.StatusCode != http.StatusOK {
+	// 		return fmt.Errorf("server returned status %d for batch metrics", resp.StatusCode)
+	// 	}
+	// 	return nil
+	// })
 }
 
-var retryDelays = []time.Duration{
-	time.Second,
-	3 * time.Second,
-	5 * time.Second,
+// func runWithRetries(fn func() error) {
+// 	var lastErr error
+
+// 	for i := 0; i <= len(retryDelays); i++ {
+// 		err := fn()
+// 		log.Printf("Retry attempt number start: %v %v %v", i, len(retryDelays), err)
+// 		if err == nil {
+// 			log.Printf("Retry attempt number successful: %v %v", i, len(retryDelays))
+// 			return
+// 		}
+
+// 		var netErr net.Error
+
+// 		if errors.As(err, &netErr) && netErr.Timeout() {
+// 			log.Printf("Go to retry %v", err)
+// 		} else if strings.Contains(err.Error(), "connection refused") ||
+// 			strings.Contains(err.Error(), "connection reset") ||
+// 			strings.Contains(err.Error(), "EOF") {
+// 			log.Printf("Go to retry %v", err)
+// 		} else {
+// 			log.Printf("Retry err %v", err)
+// 			return
+// 		}
+
+// 		if i < len(retryDelays) {
+// 			log.Printf("Retry attempt number end: %v %v %v", i, len(retryDelays), err)
+// 			time.Sleep(retryDelays[i])
+// 		}
+// 	}
+
+// 	log.Printf("retry attempts failed: %v", lastErr)
+// }
+
+func gzipPayload(payload []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(payload); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
-func runWithRetries(fn func() error) {
-	var lastErr error
-
-	for i := 0; i <= len(retryDelays); i++ {
-		err := fn()
-		if err == nil {
-			return
-		}
-		lastErr = err
-		if i < len(retryDelays) {
-			time.Sleep(retryDelays[i])
-		}
+func isRetryableNetErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
 	}
 
-	log.Printf("All retry attempts failed: %v", lastErr)
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
 }

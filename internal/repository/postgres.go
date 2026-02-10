@@ -2,18 +2,23 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"strings"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/retry"
 )
 
 type PostgresRepository struct {
-	conn *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func NewPostgresRepository(conn *pgx.Conn) *PostgresRepository {
-	return &PostgresRepository{conn: conn}
+func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool}
 }
 
 func (p *PostgresRepository) UpdateGauge(
@@ -21,12 +26,12 @@ func (p *PostgresRepository) UpdateGauge(
 	name string,
 	value float64,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		_, err := p.conn.Exec(ctx, `
+		_, err := p.pool.Exec(ctx, `
 		INSERT INTO metrics (id, type, value)
 		VALUES ($1, 'gauge', $2)
 		ON CONFLICT (id) DO UPDATE
@@ -42,12 +47,12 @@ func (p *PostgresRepository) UpdateCounter(
 	name string,
 	delta int64,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		_, err := p.conn.Exec(ctx, `
+		_, err := p.pool.Exec(ctx, `
 		INSERT INTO metrics (id, type, delta)
 		VALUES ($1, 'counter', $2)
 		ON CONFLICT (id) DO UPDATE
@@ -65,12 +70,12 @@ func (p *PostgresRepository) GetGauge(
 		v  float64
 		ok bool
 	)
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		err := p.conn.QueryRow(ctx,
+		err := p.pool.QueryRow(ctx,
 			`SELECT value FROM metrics WHERE id=$1 AND type='gauge'`,
 			name,
 		).Scan(&v)
@@ -99,12 +104,12 @@ func (p *PostgresRepository) GetCounter(
 		v  int64
 		ok bool
 	)
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		err := p.conn.QueryRow(ctx,
+		err := p.pool.QueryRow(ctx,
 			`SELECT delta FROM metrics WHERE id=$1 AND type='counter'`,
 			name,
 		).Scan(&v)
@@ -130,12 +135,12 @@ func (p *PostgresRepository) GetAll(
 ) ([]models.Metrics, error) {
 	var res []models.Metrics
 
-	err := withPgRetry(func() error {
+	err := retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		rows, err := p.conn.Query(ctx,
+		rows, err := p.pool.Query(ctx,
 			`SELECT id, type, delta, value FROM metrics`,
 		)
 		if err != nil {
@@ -174,11 +179,11 @@ func (p *PostgresRepository) UpdateBatch(
 	ctx context.Context,
 	metrics []models.Metrics,
 ) error {
-	return withPgRetry(func() error {
+	return retry.DoRetry(ctx, isRetryablePGErr, func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		tx, err := p.conn.Begin(ctx)
+		tx, err := p.pool.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -214,5 +219,25 @@ func (p *PostgresRepository) UpdateBatch(
 }
 
 func (p *PostgresRepository) Close() error {
-	return p.conn.Close(context.Background())
+	p.pool.Close()
+	return nil
+}
+
+func isRetryablePGErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "08")
+	}
+
+	return false
 }

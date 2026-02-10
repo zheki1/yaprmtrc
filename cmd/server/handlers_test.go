@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
-	"github.com/zheki1/yaprmtrc.git/internal/repository"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/repository"
 )
 
 func ptrFloat(v float64) *float64 {
