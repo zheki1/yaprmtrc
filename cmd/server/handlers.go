@@ -23,8 +23,6 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Infow("Step 1")
-
 	var reader io.Reader = r.Body
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		gzr, err := gzip.NewReader(r.Body)
@@ -40,8 +38,6 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		reader = gzr
 	}
 
-	s.logger.Infow("Step 2")
-
 	var m models.Metrics
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(&m); err != nil {
@@ -49,25 +45,18 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Infow("Step 3")
-
 	if m.ID == "" || m.MType == "" {
 		http.Error(w, "id and type are required", http.StatusBadRequest)
 		return
 	}
 
-	s.logger.Infow("Step 4")
-
 	switch m.MType {
 	case models.Gauge:
-		s.logger.Infow("Step 4 gauge")
 		value, ok, err := s.storage.GetGauge(context.Background(), m.ID)
 		if !ok || err != nil {
-			s.logger.Infow("Step 4 gauge err")
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
-		s.logger.Infow("Step 4 gauge ok")
 		m.Value = &value
 
 	case models.Counter:
@@ -83,11 +72,7 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Infow("Step 5")
-
 	w.Header().Set("Content-Type", "application/json")
-
-	s.logger.Infow("Step 6")
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(m); err != nil {
