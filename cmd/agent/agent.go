@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,7 +120,7 @@ func (a *Agent) sendAllMetrics() {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
-	runWithRetries(func() error {
+	if err := DoRetry(context.Background(), func() error {
 		bodyJSON, err := json.Marshal(metric)
 		if err != nil {
 			return fmt.Errorf("failed serializing metric %s/%s: %w", metric.MType, metric.ID, err)
@@ -161,7 +162,9 @@ func (a *Agent) sendMetric(metric models.Metrics, compressReq bool) {
 			return fmt.Errorf("server returned status %d for metric %s/%s", resp.StatusCode, metric.MType, metric.ID)
 		}
 		return nil
-	})
+	}); err != nil {
+		log.Print("failed sending metric")
+	}
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
@@ -208,12 +211,6 @@ func (a *Agent) sendBatch(metrics []models.Metrics, compressReq bool) {
 		}
 		return nil
 	})
-}
-
-var retryDelays = []time.Duration{
-	time.Second,
-	3 * time.Second,
-	5 * time.Second,
 }
 
 func runWithRetries(fn func() error) {
