@@ -7,17 +7,18 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
-	"github.com/zheki1/yaprmtrc.git/internal/retry"
+	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/retry"
 )
 
 type PostgresRepository struct {
-	conn *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func NewPostgresRepository(conn *pgx.Conn) *PostgresRepository {
-	return &PostgresRepository{conn: conn}
+func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool}
 }
 
 func (p *PostgresRepository) UpdateGauge(
@@ -30,7 +31,7 @@ func (p *PostgresRepository) UpdateGauge(
 			return ctx.Err()
 		}
 
-		_, err := p.conn.Exec(ctx, `
+		_, err := p.pool.Exec(ctx, `
 		INSERT INTO metrics (id, type, value)
 		VALUES ($1, 'gauge', $2)
 		ON CONFLICT (id) DO UPDATE
@@ -51,7 +52,7 @@ func (p *PostgresRepository) UpdateCounter(
 			return ctx.Err()
 		}
 
-		_, err := p.conn.Exec(ctx, `
+		_, err := p.pool.Exec(ctx, `
 		INSERT INTO metrics (id, type, delta)
 		VALUES ($1, 'counter', $2)
 		ON CONFLICT (id) DO UPDATE
@@ -74,7 +75,7 @@ func (p *PostgresRepository) GetGauge(
 			return ctx.Err()
 		}
 
-		err := p.conn.QueryRow(ctx,
+		err := p.pool.QueryRow(ctx,
 			`SELECT value FROM metrics WHERE id=$1 AND type='gauge'`,
 			name,
 		).Scan(&v)
@@ -108,7 +109,7 @@ func (p *PostgresRepository) GetCounter(
 			return ctx.Err()
 		}
 
-		err := p.conn.QueryRow(ctx,
+		err := p.pool.QueryRow(ctx,
 			`SELECT delta FROM metrics WHERE id=$1 AND type='counter'`,
 			name,
 		).Scan(&v)
@@ -139,7 +140,7 @@ func (p *PostgresRepository) GetAll(
 			return ctx.Err()
 		}
 
-		rows, err := p.conn.Query(ctx,
+		rows, err := p.pool.Query(ctx,
 			`SELECT id, type, delta, value FROM metrics`,
 		)
 		if err != nil {
@@ -182,7 +183,7 @@ func (p *PostgresRepository) UpdateBatch(
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		tx, err := p.conn.Begin(ctx)
+		tx, err := p.pool.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -218,7 +219,8 @@ func (p *PostgresRepository) UpdateBatch(
 }
 
 func (p *PostgresRepository) Close() error {
-	return p.conn.Close(context.Background())
+	p.pool.Close()
+	return nil
 }
 
 func isRetryablePGErr(err error) bool {

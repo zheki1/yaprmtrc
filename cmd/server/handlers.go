@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {

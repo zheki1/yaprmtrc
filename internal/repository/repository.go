@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/zheki1/yaprmtrc.git/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
 type Repository interface {

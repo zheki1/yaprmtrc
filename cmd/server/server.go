@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
-
-	"github.com/zheki1/yaprmtrc.git/internal/repository"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zheki1/yaprmtrc/internal/repository"
 )
 
 type Server struct {
@@ -13,7 +12,7 @@ type Server struct {
 	logger      Logger
 	fileStorage *FileStorage
 	syncSave    bool
-	db          *pgx.Conn
+	db          *pgxpool.Pool
 }
 
 func (s *Server) saveIfNeeded() {
