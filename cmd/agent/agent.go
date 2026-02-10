@@ -25,7 +25,7 @@ type Agent struct {
 func NewAgent(cfg *Config) *Agent {
 	return &Agent{
 		cfg:    cfg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{},
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
