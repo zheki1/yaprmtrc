@@ -33,7 +33,6 @@ func newTestServer() *Server {
 	return &Server{
 		storage: st,
 		logger:  logger.Sugar(),
-		cfg:     &Config{Key: ""},
 	}
 }
 
