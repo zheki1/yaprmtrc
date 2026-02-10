@@ -13,7 +13,6 @@ type Config struct {
 	FileStoragePath string
 	Restore         bool
 	DatabaseDSN     string
-	Key             string
 }
 
 func LoadConfig(logger Logger) *Config {
@@ -23,7 +22,6 @@ func LoadConfig(logger Logger) *Config {
 		FileStoragePath: "./metrics-recovery.json",
 		Restore:         true,
 		DatabaseDSN:     "",
-		Key:             "",
 	}
 
 	// flags
@@ -32,7 +30,6 @@ func LoadConfig(logger Logger) *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore from file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database dsn")
-	flag.StringVar(&cfg.Key, "k", cfg.Key, "Key for hash signing")
 	flag.Parse()
 
 	// env priority
@@ -58,9 +55,6 @@ func LoadConfig(logger Logger) *Config {
 	}
 	if v := os.Getenv("DATABASE_DSN"); v != "" {
 		cfg.DatabaseDSN = v
-	}
-	if v := os.Getenv("KEY"); v != "" {
-		cfg.Key = v
 	}
 
 	return cfg
