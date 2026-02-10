@@ -38,24 +38,9 @@ func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		reader = gzr
 	}
 
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			s.logger.Error("failed to close request body", err.Error())
-		}
-	}()
-
-	if len(body) == 0 {
-		http.Error(w, "empty request body", http.StatusBadRequest)
-		return
-	}
-
 	var m models.Metrics
-	if err := json.Unmarshal(body, &m); err != nil {
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(&m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
