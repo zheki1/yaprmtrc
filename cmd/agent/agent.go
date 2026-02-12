@@ -74,23 +74,7 @@ func (a *Agent) Start() {
 
 	select {}
 
-	// tickerPoll := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
-	// defer tickerPoll.Stop()
-
-	// tickerReport := time.NewTicker(time.Duration(a.cfg.ReportInterval) * time.Second)
-	// defer tickerReport.Stop()
-
-	// for {
-	// 	select {
-	// 	case <-tickerPoll.C:
-	// 		fmt.Printf("%s \n", "collect "+time.Now().String())
-	// 		a.collectMetrics()
-
-	// 	case <-tickerReport.C:
-	// 		fmt.Printf("%s \n", "send all "+time.Now().String())
-	// 		a.sendAllMetrics()
-	// 	}
-	// }
+	// TODO - use sync.WaitGroup to wait for workers to finish (on graceful shutdown implementing)
 }
 
 func (a *Agent) sendAllMetrics(jobs chan<- Job) {
