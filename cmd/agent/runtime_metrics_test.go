@@ -3,11 +3,16 @@ package main
 import (
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func TestCollectRuntimeMetrics(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
 	// Создаем экземпляр Agent
 	agent := &Agent{
+		logger: logger.Sugar(),
+
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}
@@ -47,8 +52,10 @@ func TestCollectRuntimeMetrics(t *testing.T) {
 }
 
 func TestCollectRuntimeMetricsMultipleCalls(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
 	// Создаем экземпляр Agent
 	agent := &Agent{
+		logger:  logger.Sugar(),
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}

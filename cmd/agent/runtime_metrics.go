@@ -1,14 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"runtime"
 	"time"
 )
 
 func (a *Agent) collectRuntimeMetrics() {
-	fmt.Printf("%s \n", "collect runtime metrics "+time.Now().String())
+	a.logger.Infow("%s \n", "collect runtime metrics "+time.Now().String())
 
 	var r runtime.MemStats
 	runtime.ReadMemStats(&r)

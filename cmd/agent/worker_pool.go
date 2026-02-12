@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "log"
 
 type Job func() error
 
@@ -17,7 +17,7 @@ func StartWorkers(n int, jobs <-chan Job) {
 				}
 
 				if err := job(); err != nil {
-					fmt.Printf("Job failed %s %v \n", err, id)
+					log.Printf("Job failed %s %v \n", err, id)
 				}
 			}
 		}(i)

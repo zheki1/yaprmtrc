@@ -16,20 +16,27 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/models"
 	"github.com/zheki1/yaprmtrc/internal/retry"
 	"github.com/zheki1/yaprmtrc/internal/security"
+	"go.uber.org/zap"
 )
 
 type Agent struct {
 	cfg    *Config
 	client *resty.Client
+	logger *zap.SugaredLogger
 
 	Gauge   map[string]float64
 	Counter map[string]int64
 }
 
 func NewAgent(cfg *Config) *Agent {
+	logger, err := NewLogger()
+	if err != nil {
+		log.Fatalf("cannot init logger: %v", err)
+	}
 	return &Agent{
 		cfg:    cfg,
 		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
+		logger: logger,
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
@@ -37,7 +44,7 @@ func NewAgent(cfg *Config) *Agent {
 }
 
 func (a *Agent) Start() {
-	fmt.Printf("Agent started. Server=%s, poll=%ds, report=%ds\n",
+	a.logger.Infow("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval)
 
 	jobs := make(chan Job, a.cfg.RateLimit)
@@ -78,7 +85,7 @@ func (a *Agent) Start() {
 }
 
 func (a *Agent) sendAllMetrics(jobs chan<- Job) {
-	fmt.Printf("%s \n", "send all metrics "+time.Now().String())
+	a.logger.Infow("%s \n", "send all metrics "+time.Now().String())
 	for name, value := range a.Gauge {
 		jobs <- func() error {
 			return a.sendMetric(models.Metrics{
@@ -131,7 +138,7 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 		}
 		return nil
 	}); err != nil {
-		log.Print("failed sending metric")
+		a.logger.Infow("failed sending metric")
 		return err
 	}
 
