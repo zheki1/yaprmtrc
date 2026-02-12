@@ -44,8 +44,8 @@ func NewAgent(cfg *Config) *Agent {
 }
 
 func (a *Agent) Start() {
-	a.logger.Infow("Agent started. Server=%s, poll=%ds, report=%ds\n",
-		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval)
+	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%ds, report=%ds\n",
+		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval))
 
 	jobs := make(chan Job, a.cfg.RateLimit)
 	StartWorkers(a.cfg.RateLimit, jobs)
@@ -85,25 +85,26 @@ func (a *Agent) Start() {
 }
 
 func (a *Agent) sendAllMetrics(jobs chan<- Job) {
-	a.logger.Infow("%s \n", "send all metrics "+time.Now().String())
+	a.logger.Infoln("send all metrics " + time.Now().String())
+
+	metrics := make([]models.Metrics, 0, len(a.Gauge)+len(a.Counter))
 	for name, value := range a.Gauge {
-		jobs <- func() error {
-			return a.sendMetric(models.Metrics{
-				ID:    name,
-				MType: models.Gauge,
-				Value: &value,
-			})
-		}
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &value,
+		})
+	}
+	for name, delta := range a.Counter {
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &delta,
+		})
 	}
 
-	for name, value := range a.Counter {
-		jobs <- func() error {
-			return a.sendMetric(models.Metrics{
-				ID:    name,
-				MType: models.Counter,
-				Delta: &value,
-			})
-		}
+	jobs <- func() error {
+		return a.sendBatch(metrics)
 	}
 }
 
@@ -138,14 +139,14 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 		}
 		return nil
 	}); err != nil {
-		a.logger.Infow("failed sending metric")
+		a.logger.Info("failed sending metric")
 		return err
 	}
 
 	return nil
 }
 
-func (a *Agent) sendBatch(metrics []models.Metrics) {
+func (a *Agent) sendBatch(metrics []models.Metrics) error {
 	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metrics)
 		if err != nil {
@@ -176,8 +177,11 @@ func (a *Agent) sendBatch(metrics []models.Metrics) {
 		}
 		return nil
 	}); err != nil {
-		log.Print("failed sending metric")
+		a.logger.Info("failed sending metric")
+		return err
 	}
+
+	return nil
 }
 
 func gzipPayload(payload []byte) ([]byte, error) {

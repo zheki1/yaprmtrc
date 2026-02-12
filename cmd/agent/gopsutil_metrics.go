@@ -9,7 +9,7 @@ import (
 )
 
 func (a *Agent) collectGopsutilMetrics() {
-	a.logger.Infow("%s \n", "collect gopsutil metrics "+time.Now().String())
+	a.logger.Infoln("collect gopsutil metrics " + time.Now().String())
 
 	vm, err := mem.VirtualMemory()
 	if err == nil {

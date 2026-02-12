@@ -7,7 +7,7 @@ import (
 )
 
 func (a *Agent) collectRuntimeMetrics() {
-	a.logger.Infow("%s \n", "collect runtime metrics "+time.Now().String())
+	a.logger.Infoln("collect runtime metrics " + time.Now().String())
 
 	var r runtime.MemStats
 	runtime.ReadMemStats(&r)
