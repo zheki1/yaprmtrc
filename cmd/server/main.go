@@ -108,6 +108,7 @@ func main() {
 		fileStorage: fileStorage,
 		syncSave:    cfg.StoreInterval == 0,
 		db:          dbConn,
+		key:         cfg.Key,
 	}
 
 	httpServer := &http.Server{
