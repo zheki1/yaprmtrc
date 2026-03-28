@@ -14,6 +14,8 @@ type Config struct {
 	Restore         bool
 	DatabaseDSN     string
 	Key             string
+	AuditFile       string
+	AuditURL        string
 }
 
 func LoadConfig(logger Logger) *Config {
@@ -24,6 +26,8 @@ func LoadConfig(logger Logger) *Config {
 		Restore:         true,
 		DatabaseDSN:     "",
 		Key:             "",
+		AuditFile:       "",
+		AuditURL:        "",
 	}
 
 	// flags
@@ -33,6 +37,8 @@ func LoadConfig(logger Logger) *Config {
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore from file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database dsn")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit log file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit log remote URL")
 	flag.Parse()
 
 	// env priority
@@ -61,6 +67,12 @@ func LoadConfig(logger Logger) *Config {
 	}
 	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		cfg.AuditFile = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
+		cfg.AuditURL = v
 	}
 
 	return cfg

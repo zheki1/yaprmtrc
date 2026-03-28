@@ -156,6 +156,7 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.saveIfNeeded()
+	s.notifyAudit(r, []string{m.ID})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -200,6 +201,8 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown metric type", http.StatusBadRequest)
 		return
 	}
+
+	s.notifyAudit(r, []string{name})
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -362,6 +365,12 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	names := make([]string, len(m))
+	for i := range m {
+		names[i] = m[i].ID
+	}
+	s.notifyAudit(r, names)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

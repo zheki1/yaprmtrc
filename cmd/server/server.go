@@ -14,6 +14,7 @@ type Server struct {
 	syncSave    bool
 	db          *pgxpool.Pool
 	key         string
+	audit       *AuditPublisher
 }
 
 func (s *Server) saveIfNeeded() {
