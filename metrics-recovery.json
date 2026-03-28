@@ -245,11 +245,6 @@
     "value": 0
   },
   {
-    "id": "Alloc",
-    "type": "gauge",
-    "value": 3168568
-  },
-  {
     "id": "GCSys",
     "type": "gauge",
     "value": 1914144
@@ -262,7 +257,12 @@
   {
     "id": "PollCount",
     "type": "counter",
-    "delta": 688
+    "delta": 1376
+  },
+  {
+    "id": "Alloc",
+    "type": "gauge",
+    "value": 1.23
   },
   {
     "id": "A",
@@ -272,6 +272,6 @@
   {
     "id": "B",
     "type": "counter",
-    "delta": 12
+    "delta": 27
   }
 ]
