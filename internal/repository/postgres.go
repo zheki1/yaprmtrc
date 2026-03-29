@@ -13,10 +13,12 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/retry"
 )
 
+// PostgresRepository — хранилище метрик на базе PostgreSQL с поддержкой повторных попыток при сетевых ошибках.
 type PostgresRepository struct {
 	pool *pgxpool.Pool
 }
 
+// NewPostgresRepository создаёт новое хранилище, используя переданный пул pgxpool.
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{pool: pool}
 }

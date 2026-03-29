@@ -7,6 +7,8 @@ import (
 	"strconv"
 )
 
+// Config хранит конфигурацию агента: адрес сервера, интервалы опроса и отправки,
+// ключ HMAC и лимит одновременных запросов.
 type Config struct {
 	Addr           string
 	ReportInterval int

@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// Config хранит конфигурацию сервера: адрес, интервалы сохранения,
+// путь к хранилищу, DSN базы данных и параметры аудита.
 type Config struct {
 	Address         string
 	StoreInterval   time.Duration
@@ -18,6 +20,8 @@ type Config struct {
 	AuditURL        string
 }
 
+// LoadConfig читает конфигурацию из флагов командной строки и переменных окружения.
+// Переменные окружения имеют приоритет над флагами.
 func LoadConfig(logger Logger) *Config {
 	cfg := &Config{
 		Address:         "localhost:8080",

@@ -7,6 +7,8 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/repository"
 )
 
+// Server — центральная структура HTTP-сервера сбора метрик.
+// Содержит хранилище, логгер, файловое хранилище, подключение к БД и настройки аудита.
 type Server struct {
 	storage     repository.Repository
 	logger      Logger
