@@ -72,7 +72,7 @@ func (m *MemRepository) GetAll(
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var res []models.Metrics
+	res := make([]models.Metrics, 0, len(m.gauges)+len(m.counters))
 
 	for k, v := range m.gauges {
 		val := v
