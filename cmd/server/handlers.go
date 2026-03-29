@@ -100,25 +100,14 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}()
 		reader = gzr
 	}
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
 			s.logger.Error("failed to close request body", err.Error())
 		}
 	}()
 
-	if len(body) == 0 {
-		http.Error(w, "empty request body", http.StatusBadRequest)
-		return
-	}
-
 	var m models.Metrics
-	if err := json.Unmarshal(body, &m); err != nil {
+	if err := json.NewDecoder(reader).Decode(&m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -134,8 +123,7 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "value is required", http.StatusBadRequest)
 			return
 		}
-		err = s.storage.UpdateGauge(context.Background(), m.ID, *m.Value)
-		if err != nil {
+		if err := s.storage.UpdateGauge(context.Background(), m.ID, *m.Value); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -144,8 +132,7 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "delta is required", http.StatusBadRequest)
 			return
 		}
-		err = s.storage.UpdateCounter(context.Background(), m.ID, *m.Delta)
-		if err != nil {
+		if err := s.storage.UpdateCounter(context.Background(), m.ID, *m.Delta); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -239,13 +226,39 @@ func (s *Server) valueHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "metric not found", http.StatusNotFound)
 }
 
-func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
-	type MetricRow struct {
-		Name  string
-		Type  string
-		Value string
-	}
+type MetricRow struct {
+	Name  string
+	Type  string
+	Value string
+}
 
+var pageTpl = template.Must(template.New("index").Parse(`
+<!DOCTYPE html>
+<html>
+<head><title>Metrics</title></head>
+<body>
+	<h1>Metrics</h1>
+	<table>
+		<tr>
+			<th>Name</th>
+			<th>Type</th>
+			<th>Value</th>
+		</tr>
+
+		{{range .}}
+		<tr>
+			<td>{{.Name}}</td>
+			<td>{{.Type}}</td>
+			<td>{{.Value}}</td>
+		</tr>
+		{{end}}
+		
+	</table>
+</body>
+</html>
+`))
+
+func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 	metrics, err := s.storage.GetAll(context.Background())
 
 	if err != nil {
@@ -253,46 +266,19 @@ func (s *Server) pageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var rows []MetricRow
+	rows := make([]MetricRow, 0, len(metrics))
 	for _, ms := range metrics {
 		switch ms.MType {
 		case models.Gauge:
-			rows = append(rows, MetricRow{ms.ID, ms.MType, fmt.Sprintf("%f", *ms.Value)})
+			rows = append(rows, MetricRow{ms.ID, ms.MType, strconv.FormatFloat(*ms.Value, 'f', -1, 64)})
 		case models.Counter:
-			rows = append(rows, MetricRow{ms.ID, ms.MType, fmt.Sprintf("%d", *ms.Delta)})
+			rows = append(rows, MetricRow{ms.ID, ms.MType, strconv.FormatInt(*ms.Delta, 10)})
 		}
 	}
 
-	tpl := `
-		<!DOCTYPE html>
-		<html>
-		<head><title>Metrics</title></head>
-		<body>
-			<h1>Metrics</h1>
-			<table>
-				<tr>
-					<th>Name</th>
-					<th>Type</th>
-					<th>Value</th>
-				</tr>
-
-				{{range .}}
-				<tr>
-					<td>{{.Name}}</td>
-					<td>{{.Type}}</td>
-					<td>{{.Value}}</td>
-				</tr>
-				{{end}}
-				
-			</table>
-		</body>
-		</html>
-		`
-
-	t := template.Must(template.New("index").Parse(tpl))
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	if err := t.Execute(w, rows); err != nil {
+	if err := pageTpl.Execute(w, rows); err != nil {
 		s.logger.Error("failed to render template", err.Error())
 	}
 }
@@ -338,26 +324,20 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 		reader = gzr
 	}
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
 			s.logger.Error("failed to close request body", err.Error())
 		}
 	}()
 
-	if len(body) == 0 {
-		http.Error(w, "empty request body", http.StatusBadRequest)
+	var m []models.Metrics
+	if err := json.NewDecoder(reader).Decode(&m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var m []models.Metrics
-	if err := json.Unmarshal(body, &m); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if len(m) == 0 {
+		http.Error(w, "empty request body", http.StatusBadRequest)
 		return
 	}
 
