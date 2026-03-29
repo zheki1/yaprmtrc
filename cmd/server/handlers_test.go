@@ -33,6 +33,7 @@ func newTestServer() *Server {
 	return &Server{
 		storage: st,
 		logger:  logger.Sugar(),
+		audit:   NewAuditPublisher(logger.Sugar()),
 	}
 }
 

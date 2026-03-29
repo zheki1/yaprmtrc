@@ -6,6 +6,7 @@ type Logger interface {
 	Infow(msg string, fields ...any)
 	Fatalf(template string, args ...interface{})
 	Error(args ...interface{})
+	Errorf(template string, args ...interface{})
 }
 
 func NewLogger() (*zap.SugaredLogger, error) {
