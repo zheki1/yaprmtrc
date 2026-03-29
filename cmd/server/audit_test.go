@@ -21,10 +21,10 @@ func (m *mockObserver) Notify(event AuditEvent) {
 // mockLogger satisfies Logger interface for tests.
 type mockLogger struct{}
 
-func (mockLogger) Infow(string, ...any)              {}
-func (mockLogger) Fatalf(string, ...interface{})      {}
-func (mockLogger) Error(...interface{})               {}
-func (mockLogger) Errorf(string, ...interface{})      {}
+func (mockLogger) Infow(string, ...any)          {}
+func (mockLogger) Fatalf(string, ...interface{}) {}
+func (mockLogger) Error(...interface{})          {}
+func (mockLogger) Errorf(string, ...interface{}) {}
 
 func TestAuditPublisher_Publish(t *testing.T) {
 	pub := NewAuditPublisher(mockLogger{})
