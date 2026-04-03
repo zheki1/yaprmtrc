@@ -29,6 +29,7 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// LoggingMiddleware логирует все HTTP-запросы: метод, URI, длительность, статус и размер ответа.
 func LoggingMiddleware(logger Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

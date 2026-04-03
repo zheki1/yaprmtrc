@@ -7,14 +7,17 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
+// FileStorage обеспечивает сохранение и восстановление метрик в JSON-файл для переживания перезапусков.
 type FileStorage struct {
 	path string
 }
 
+// NewFileStorage создаёт FileStorage с указанным путём к файлу.
 func NewFileStorage(path string) *FileStorage {
 	return &FileStorage{path: path}
 }
 
+// Save сериализует срез метрик в JSON и записывает в файл.
 func (fs *FileStorage) Save(metrics []models.Metrics) (err error) {
 	file, err := os.Create(fs.path)
 	if err != nil {
@@ -37,6 +40,7 @@ func (fs *FileStorage) Save(metrics []models.Metrics) (err error) {
 	return nil
 }
 
+// Load читает метрики из JSON-файла.
 func (fs *FileStorage) Load() (metrics []models.Metrics, err error) {
 	file, err := os.Open(fs.path)
 	if err != nil {

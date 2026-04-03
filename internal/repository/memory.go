@@ -7,12 +7,15 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
+// MemRepository — потокобезопасное in-memory хранилище метрик.
+// Используется как хранилище по умолчанию, когда не задана база данных.
 type MemRepository struct {
 	mu       sync.RWMutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
 
+// NewMemRepository создаёт новое пустое in-memory хранилище.
 func NewMemRepository() *MemRepository {
 	return &MemRepository{
 		gauges:   make(map[string]float64),
@@ -20,6 +23,7 @@ func NewMemRepository() *MemRepository {
 	}
 }
 
+// UpdateGauge устанавливает значение gauge-метрики.
 func (m *MemRepository) UpdateGauge(
 	ctx context.Context,
 	name string,
@@ -32,6 +36,7 @@ func (m *MemRepository) UpdateGauge(
 	return nil
 }
 
+// UpdateCounter добавляет delta к текущему значению counter-метрики.
 func (m *MemRepository) UpdateCounter(
 	ctx context.Context,
 	name string,
@@ -44,6 +49,7 @@ func (m *MemRepository) UpdateCounter(
 	return nil
 }
 
+// GetGauge возвращает значение gauge-метрики по имени. Второе значение false, если метрика не найдена.
 func (m *MemRepository) GetGauge(
 	ctx context.Context,
 	name string,
@@ -55,6 +61,7 @@ func (m *MemRepository) GetGauge(
 	return val, ok, nil
 }
 
+// GetCounter возвращает значение counter-метрики по имени. Второе значение false, если метрика не найдена.
 func (m *MemRepository) GetCounter(
 	ctx context.Context,
 	name string,
@@ -66,13 +73,14 @@ func (m *MemRepository) GetCounter(
 	return val, ok, nil
 }
 
+// GetAll возвращает срез всех хранимых метрик.
 func (m *MemRepository) GetAll(
 	ctx context.Context,
 ) ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var res []models.Metrics
+	res := make([]models.Metrics, 0, len(m.gauges)+len(m.counters))
 
 	for k, v := range m.gauges {
 		val := v
@@ -95,6 +103,7 @@ func (m *MemRepository) GetAll(
 	return res, nil
 }
 
+// UpdateBatch атомарно обновляет несколько метрик за один вызов.
 func (m *MemRepository) UpdateBatch(
 	ctx context.Context,
 	metrics []models.Metrics,
@@ -115,6 +124,7 @@ func (m *MemRepository) UpdateBatch(
 	return nil
 }
 
+// Close освобождает ресурсы (для in-memory хранилища ничего не делает).
 func (m *MemRepository) Close() error {
 	return nil
 }

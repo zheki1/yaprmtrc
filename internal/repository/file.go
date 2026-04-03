@@ -9,11 +9,14 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
+// FileRepository — хранилище метрик в JSON-файле.
+// Каждая операция записи перезаписывает файл целиком через атомарный rename.
 type FileRepository struct {
 	path string
 	mu   sync.Mutex
 }
 
+// NewFileRepository создаёт хранилище, пишущее метрики в файл path.
 func NewFileRepository(path string) *FileRepository {
 	return &FileRepository{path: path}
 }

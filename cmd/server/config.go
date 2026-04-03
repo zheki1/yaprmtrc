@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// Config хранит конфигурацию сервера: адрес, интервалы сохранения,
+// путь к хранилищу, DSN базы данных и параметры аудита.
 type Config struct {
 	Address         string
 	StoreInterval   time.Duration
@@ -14,8 +16,12 @@ type Config struct {
 	Restore         bool
 	DatabaseDSN     string
 	Key             string
+	AuditFile       string
+	AuditURL        string
 }
 
+// LoadConfig читает конфигурацию из флагов командной строки и переменных окружения.
+// Переменные окружения имеют приоритет над флагами.
 func LoadConfig(logger Logger) *Config {
 	cfg := &Config{
 		Address:         "localhost:8080",
@@ -24,6 +30,8 @@ func LoadConfig(logger Logger) *Config {
 		Restore:         true,
 		DatabaseDSN:     "",
 		Key:             "",
+		AuditFile:       "",
+		AuditURL:        "",
 	}
 
 	// flags
@@ -33,6 +41,8 @@ func LoadConfig(logger Logger) *Config {
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore from file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database dsn")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit log file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit log remote URL")
 	flag.Parse()
 
 	// env priority
@@ -61,6 +71,12 @@ func LoadConfig(logger Logger) *Config {
 	}
 	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		cfg.AuditFile = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
+		cfg.AuditURL = v
 	}
 
 	return cfg

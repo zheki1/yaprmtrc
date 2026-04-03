@@ -2,8 +2,10 @@ package main
 
 import "log"
 
+// Job — единица работы, выполняемая воркером пула.
 type Job func() error
 
+// StartWorkers запускает n воркеров, читающих задачи из канала jobs.
 func StartWorkers(n int, jobs <-chan Job) {
 	if n < 1 {
 		n = 1

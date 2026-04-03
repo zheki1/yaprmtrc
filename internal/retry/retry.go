@@ -1,3 +1,4 @@
+// Package retry реализует политику повторных попыток с возрастающими интервалами (1s, 3s, 5s).
 package retry
 
 import (
@@ -11,6 +12,9 @@ var retryDelays = []time.Duration{
 	5 * time.Second,
 }
 
+// DoRetry выполняет операцию op с повторными попытками.
+// Попытка повторяется, если isRetryable возвращает true для полученной ошибки.
+// Максимум 3 повтора с задержками 1, 3 и 5 секунд. Поддерживает отмену через ctx.
 func DoRetry(ctx context.Context, isRetryable func(error) bool, op func() error) error {
 	if ctx == nil {
 		ctx = context.Background()

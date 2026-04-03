@@ -109,6 +109,19 @@ func main() {
 		syncSave:    cfg.StoreInterval == 0,
 		db:          dbConn,
 		key:         cfg.Key,
+		audit:       NewAuditPublisher(logger),
+	}
+
+	if cfg.AuditFile != "" {
+		fileObs, err := NewFileAuditObserver(cfg.AuditFile, logger)
+		if err != nil {
+			log.Fatalf("audit file observer: %v", err)
+		}
+		defer fileObs.Close()
+		server.audit.Register(fileObs)
+	}
+	if cfg.AuditURL != "" {
+		server.audit.Register(NewHTTPAuditObserver(cfg.AuditURL, logger))
 	}
 
 	httpServer := &http.Server{
