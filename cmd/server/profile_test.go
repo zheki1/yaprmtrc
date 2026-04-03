@@ -19,14 +19,29 @@ import (
 	"runtime/pprof"
 )
 
-func newProfileServer() *Server {
-	logger, _ := zap.NewDevelopment()
+func newProfileServer(t *testing.T) *Server {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		t.Fatalf("failed to init logger: %v", err)
+	}
 	st := repository.NewMemRepository()
 	return &Server{
 		storage: st,
 		logger:  logger.Sugar(),
 		audit:   NewAuditPublisher(logger.Sugar()),
 	}
+}
+
+func doRequest(t *testing.T, handler http.HandlerFunc, method, path string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	return w
 }
 
 // TestProfileMemory generates a heap profile after simulating realistic load.
@@ -38,13 +53,19 @@ func TestProfileMemory(t *testing.T) {
 		outPath = "../../profiles/base.pprof"
 	}
 
-	s := newProfileServer()
+	s := newProfileServer(t)
 	ctx := context.Background()
 
 	// Pre-populate storage with realistic data
 	for i := 0; i < 500; i++ {
-		_ = s.storage.UpdateGauge(ctx, fmt.Sprintf("gauge_%d", i), float64(i)*1.1)
-		_ = s.storage.UpdateCounter(ctx, fmt.Sprintf("counter_%d", i), int64(i))
+		err := s.storage.UpdateGauge(ctx, fmt.Sprintf("gauge_%d", i), float64(i)*1.1)
+		if err != nil {
+			t.Fatalf("update gauge: %v", err)
+		}
+		err = s.storage.UpdateCounter(ctx, fmt.Sprintf("counter_%d", i), int64(i))
+		if err != nil {
+			t.Fatalf("update counter: %v", err)
+		}
 	}
 
 	// Simulate batch updates
@@ -74,12 +95,11 @@ func TestProfileMemory(t *testing.T) {
 			MType: models.Gauge,
 			Value: func() *float64 { v := float64(round); return &v }(),
 		}
-		payload, _ := json.Marshal(m)
-
-		req := httptest.NewRequest(http.MethodPost, "/update", bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		s.updateHandlerJSON(w, req)
+		payload, err := json.Marshal(m)
+		if err != nil {
+			t.Fatalf("marshal batch: %v", err)
+		}
+		doRequest(t, s.updateHandlerJSON, http.MethodPost, "/update", payload)
 
 		// Single counter update
 		mc := models.Metrics{
@@ -87,30 +107,25 @@ func TestProfileMemory(t *testing.T) {
 			MType: models.Counter,
 			Delta: func() *int64 { d := int64(1); return &d }(),
 		}
-		payloadC, _ := json.Marshal(mc)
-		req = httptest.NewRequest(http.MethodPost, "/update", bytes.NewReader(payloadC))
-		req.Header.Set("Content-Type", "application/json")
-		w = httptest.NewRecorder()
-		s.updateHandlerJSON(w, req)
+		payloadC, err := json.Marshal(mc)
+		if err != nil {
+			t.Fatalf("marshal batch: %v", err)
+		}
+		doRequest(t, s.updateHandlerJSON, http.MethodPost, "/update", payloadC)
 
 		// Value request
 		vReq := models.Metrics{ID: fmt.Sprintf("gauge_%d", round%500), MType: models.Gauge}
-		vPayload, _ := json.Marshal(vReq)
-		req = httptest.NewRequest(http.MethodPost, "/value", bytes.NewReader(vPayload))
-		req.Header.Set("Content-Type", "application/json")
-		w = httptest.NewRecorder()
-		s.valueHandlerJSON(w, req)
+		vPayload, err := json.Marshal(vReq)
+		if err != nil {
+			t.Fatalf("marshal batch: %v", err)
+		}
+		doRequest(t, s.valueHandlerJSON, http.MethodPost, "/value", vPayload)
 
 		// Batch update
-		req = httptest.NewRequest(http.MethodPost, "/updates", bytes.NewReader(batchPayload))
-		req.Header.Set("Content-Type", "application/json")
-		w = httptest.NewRecorder()
-		s.batchUpdateHandler(w, req)
+		doRequest(t, s.batchUpdateHandler, http.MethodPost, "/updates", batchPayload)
 
 		// Page render
-		req = httptest.NewRequest(http.MethodGet, "/", nil)
-		w = httptest.NewRecorder()
-		s.pageHandler(w, req)
+		doRequest(t, s.pageHandler, http.MethodGet, "/value", nil)
 	}
 
 	// Force GC to get accurate retained memory picture

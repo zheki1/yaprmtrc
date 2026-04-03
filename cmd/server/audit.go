@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
+
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 )
 
 // AuditEvent represents an audit log entry emitted after successful metric processing.
@@ -23,6 +27,7 @@ type AuditObserver interface {
 
 // AuditPublisher manages a list of observers and publishes events to all of them.
 type AuditPublisher struct {
+	mu        sync.RWMutex
 	observers []AuditObserver
 	logger    Logger
 }
@@ -34,25 +39,38 @@ func NewAuditPublisher(logger Logger) *AuditPublisher {
 
 // Register adds an observer to the publisher.
 func (p *AuditPublisher) Register(o AuditObserver) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.observers = append(p.observers, o)
 }
 
 // Publish sends an audit event to all registered observers.
 func (p *AuditPublisher) Publish(event AuditEvent) {
-	for _, o := range p.observers {
+	p.mu.RLock()
+	observers := make([]AuditObserver, len(p.observers))
+	copy(observers, p.observers)
+	p.mu.RUnlock()
+
+	for _, o := range observers {
 		o.Notify(event)
 	}
 }
 
 // FileAuditObserver writes audit events as JSON lines to a file.
 type FileAuditObserver struct {
-	filePath string
-	logger   Logger
+	mu     sync.Mutex
+	file   *os.File
+	logger Logger
 }
 
-// NewFileAuditObserver creates a new FileAuditObserver.
-func NewFileAuditObserver(filePath string, logger Logger) *FileAuditObserver {
-	return &FileAuditObserver{filePath: filePath, logger: logger}
+// NewFileAuditObserver creates a new FileAuditObserver with an already-opened file.
+func NewFileAuditObserver(filePath string, logger Logger) (*FileAuditObserver, error) {
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("audit file: open error: %w", err)
+	}
+	return &FileAuditObserver{file: f, logger: logger}, nil
 }
 
 // Notify appends the audit event as a JSON line to the configured file.
@@ -63,31 +81,43 @@ func (o *FileAuditObserver) Notify(event AuditEvent) {
 		return
 	}
 
-	f, err := os.OpenFile(o.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		o.logger.Errorf("audit file: open error: %v", err)
-		return
-	}
-	defer f.Close()
-
 	data = append(data, '\n')
-	if _, err := f.Write(data); err != nil {
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if _, err := o.file.Write(data); err != nil {
 		o.logger.Errorf("audit file: write error: %v", err)
 	}
+}
+
+// Close closes the underlying file.
+func (o *FileAuditObserver) Close() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.file.Close()
 }
 
 // HTTPAuditObserver sends audit events as JSON via HTTP POST to a remote URL.
 type HTTPAuditObserver struct {
 	url    string
-	client *http.Client
+	client *retryablehttp.Client
 	logger Logger
 }
 
 // NewHTTPAuditObserver creates a new HTTPAuditObserver.
 func NewHTTPAuditObserver(url string, logger Logger) *HTTPAuditObserver {
+	client := retryablehttp.NewClient()
+	client.RetryMax = 3
+	client.RetryWaitMin = 100 * time.Millisecond
+	client.RetryWaitMax = 1 * time.Second
+
+	// логирование через твой logger
+	client.Logger = nil // отключаем стандартный лог, если не нужен
+
 	return &HTTPAuditObserver{
 		url:    url,
-		client: &http.Client{Timeout: 5 * time.Second},
+		client: client,
 		logger: logger,
 	}
 }
@@ -100,7 +130,15 @@ func (o *HTTPAuditObserver) Notify(event AuditEvent) {
 		return
 	}
 
-	resp, err := o.client.Post(o.url, "application/json", bytes.NewReader(data))
+	req, err := retryablehttp.NewRequest("POST", o.url, bytes.NewReader(data))
+	if err != nil {
+		o.logger.Errorf("audit http: request error: %v", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.client.Do(req)
 	if err != nil {
 		o.logger.Errorf("audit http: post error: %v", err)
 		return

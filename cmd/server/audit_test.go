@@ -69,7 +69,10 @@ func TestFileAuditObserver_Notify(t *testing.T) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	obs := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	obs, err := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	event := AuditEvent{
 		Ts:        1234567890,
@@ -77,6 +80,7 @@ func TestFileAuditObserver_Notify(t *testing.T) {
 		IPAddress: "10.0.0.1",
 	}
 	obs.Notify(event)
+	obs.Close()
 
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
@@ -106,10 +110,14 @@ func TestFileAuditObserver_AppendsLines(t *testing.T) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	obs := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	obs, err := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	obs.Notify(AuditEvent{Ts: 1, Metrics: []string{"m1"}, IPAddress: "1.1.1.1"})
 	obs.Notify(AuditEvent{Ts: 2, Metrics: []string{"m2"}, IPAddress: "2.2.2.2"})
+	obs.Close()
 
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {

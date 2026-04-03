@@ -113,7 +113,12 @@ func main() {
 	}
 
 	if cfg.AuditFile != "" {
-		server.audit.Register(NewFileAuditObserver(cfg.AuditFile, logger))
+		fileObs, err := NewFileAuditObserver(cfg.AuditFile, logger)
+		if err != nil {
+			log.Fatalf("audit file observer: %v", err)
+		}
+		defer fileObs.Close()
+		server.audit.Register(fileObs)
 	}
 	if cfg.AuditURL != "" {
 		server.audit.Register(NewHTTPAuditObserver(cfg.AuditURL, logger))
