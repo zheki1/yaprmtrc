@@ -20,6 +20,8 @@ type AuditEvent struct {
 	IPAddress string   `json:"ip_address"`
 }
 
+//go:generate mockgen -destination=mocks_test.go -package=main github.com/zheki1/yaprmtrc/cmd/server AuditObserver,Logger
+
 // AuditObserver is the Observer interface for receiving audit events.
 type AuditObserver interface {
 	Notify(event AuditEvent)
@@ -30,11 +32,15 @@ type AuditPublisher struct {
 	mu        sync.RWMutex
 	observers []AuditObserver
 	logger    Logger
+	sem       chan struct{}
 }
 
 // NewAuditPublisher creates a new AuditPublisher.
 func NewAuditPublisher(logger Logger) *AuditPublisher {
-	return &AuditPublisher{logger: logger}
+	return &AuditPublisher{
+		logger: logger,
+		sem:    make(chan struct{}, 10),
+	}
 }
 
 // Register adds an observer to the publisher.
@@ -46,15 +52,27 @@ func (p *AuditPublisher) Register(o AuditObserver) {
 }
 
 // Publish sends an audit event to all registered observers.
+// Observers are notified concurrently; a semaphore limits the number of
+// in-flight goroutines so they do not grow without bound.
 func (p *AuditPublisher) Publish(event AuditEvent) {
 	p.mu.RLock()
 	observers := make([]AuditObserver, len(p.observers))
 	copy(observers, p.observers)
 	p.mu.RUnlock()
 
+	var wg sync.WaitGroup
 	for _, o := range observers {
-		o.Notify(event)
+		p.sem <- struct{}{} // acquire semaphore slot
+		wg.Add(1)
+		go func(obs AuditObserver) {
+			defer func() {
+				<-p.sem // release slot
+				wg.Done()
+			}()
+			obs.Notify(event)
+		}(o)
 	}
+	wg.Wait()
 }
 
 // FileAuditObserver writes audit events as JSON lines to a file.
