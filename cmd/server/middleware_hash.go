@@ -8,6 +8,8 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/security"
 )
 
+// HashMiddleware проверяет целостность запроса по заголовку HashSHA256
+// и добавляет хеш к ответу, если задан key.
 func HashMiddleware(key string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -46,6 +48,7 @@ func HashMiddleware(key string) func(http.Handler) http.Handler {
 	}
 }
 
+// ResponseRecorder перехватывает HTTP-ответ для вычисления хеша тела.
 type ResponseRecorder struct {
 	header      http.Header
 	status      int
@@ -53,6 +56,7 @@ type ResponseRecorder struct {
 	wroteHeader bool
 }
 
+// NewRecorder создаёт новый ResponseRecorder.
 func NewRecorder(_ http.ResponseWriter) *ResponseRecorder {
 	return &ResponseRecorder{
 		header: make(http.Header),
@@ -78,10 +82,12 @@ func (r *ResponseRecorder) Write(p []byte) (int, error) {
 	return r.body.Write(p)
 }
 
+// Body возвращает накопленное тело ответа.
 func (r *ResponseRecorder) Body() []byte {
 	return r.body.Bytes()
 }
 
+// FlushTo записывает накопленный ответ (заголовки, статус, тело) в оригинальный ResponseWriter.
 func (r *ResponseRecorder) FlushTo(w http.ResponseWriter) {
 	for k, vv := range r.header {
 		for _, v := range vv {

@@ -1,3 +1,4 @@
+// Package repository реализует хранилища метрик: в памяти. в файле и в PostgreSQL.
 package repository
 
 import (
@@ -6,6 +7,9 @@ import (
 	"github.com/zheki1/yaprmtrc/internal/models"
 )
 
+// Repository — интерфейс хранилища метрик.
+// Поддерживает обновление и чтение gauge/counter-метрик,
+// пакетное обновление и получение всех метрик.
 type Repository interface {
 	UpdateGauge(ctx context.Context, name string, value float64) error
 	UpdateCounter(ctx context.Context, name string, delta int64) error

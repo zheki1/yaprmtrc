@@ -14,8 +14,7 @@ func BenchmarkCollectRuntimeMetrics(b *testing.B) {
 		Counter: make(map[string]int64),
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		agent.collectRuntimeMetrics()
 	}
 }

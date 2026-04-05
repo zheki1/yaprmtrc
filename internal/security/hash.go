@@ -1,3 +1,4 @@
+// Package security содержит функции для подписи и проверки целостности данных.
 package security
 
 import (
@@ -5,6 +6,8 @@ import (
 	"encoding/hex"
 )
 
+// CalcHash вычисляет SHA-256 хеш тела body с применением ключа key.
+// Возвращает hex-кодированную строку.
 func CalcHash(body []byte, key string) string {
 	h := sha256.New()
 	h.Write(body)

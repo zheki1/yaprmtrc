@@ -19,6 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// Agent — агент сбора метрик. Периодически собирает runtime- и gopsutil-метрики
+// и отправляет их на сервер пакетно (через /updates).
 type Agent struct {
 	cfg    *Config
 	client *resty.Client
@@ -28,6 +30,7 @@ type Agent struct {
 	Counter map[string]int64
 }
 
+// NewAgent создаёт новый агент с указанной конфигурацией.
 func NewAgent(cfg *Config) *Agent {
 	logger, err := NewLogger()
 	if err != nil {
@@ -43,6 +46,7 @@ func NewAgent(cfg *Config) *Agent {
 	}
 }
 
+// Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
 func (a *Agent) Start() {
 	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval))

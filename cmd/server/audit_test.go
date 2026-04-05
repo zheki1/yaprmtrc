@@ -7,29 +7,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"go.uber.org/mock/gomock"
 )
 
-// mockObserver records audit events for testing.
-type mockObserver struct {
-	events []AuditEvent
-}
-
-func (m *mockObserver) Notify(event AuditEvent) {
-	m.events = append(m.events, event)
-}
-
-// mockLogger satisfies Logger interface for tests.
-type mockLogger struct{}
-
-func (mockLogger) Infow(string, ...any)          {}
-func (mockLogger) Fatalf(string, ...interface{}) {}
-func (mockLogger) Error(...interface{})          {}
-func (mockLogger) Errorf(string, ...interface{}) {}
-
 func TestAuditPublisher_Publish(t *testing.T) {
-	pub := NewAuditPublisher(mockLogger{})
-	obs1 := &mockObserver{}
-	obs2 := &mockObserver{}
+	ctrl := gomock.NewController(t)
+
+	mockLog := NewMockLogger(ctrl)
+	pub := NewAuditPublisher(mockLog)
+
+	obs1 := NewMockAuditObserver(ctrl)
+	obs2 := NewMockAuditObserver(ctrl)
 	pub.Register(obs1)
 	pub.Register(obs2)
 
@@ -39,29 +28,25 @@ func TestAuditPublisher_Publish(t *testing.T) {
 		IPAddress: "192.168.0.42",
 	}
 
-	pub.Publish(event)
+	obs1.EXPECT().Notify(event).Times(1)
+	obs2.EXPECT().Notify(event).Times(1)
 
-	if len(obs1.events) != 1 {
-		t.Fatalf("observer1 expected 1 event, got %d", len(obs1.events))
-	}
-	if len(obs2.events) != 1 {
-		t.Fatalf("observer2 expected 1 event, got %d", len(obs2.events))
-	}
-	if obs1.events[0].IPAddress != "192.168.0.42" {
-		t.Errorf("expected IP 192.168.0.42, got %s", obs1.events[0].IPAddress)
-	}
-	if len(obs1.events[0].Metrics) != 2 {
-		t.Errorf("expected 2 metrics, got %d", len(obs1.events[0].Metrics))
-	}
+	pub.Publish(event)
 }
 
 func TestAuditPublisher_NoObservers(t *testing.T) {
-	pub := NewAuditPublisher(mockLogger{})
+	ctrl := gomock.NewController(t)
+
+	mockLog := NewMockLogger(ctrl)
+	pub := NewAuditPublisher(mockLog)
 	// Should not panic with zero observers.
 	pub.Publish(AuditEvent{Ts: 1, Metrics: []string{"m1"}, IPAddress: "1.2.3.4"})
 }
 
 func TestFileAuditObserver_Notify(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLog := NewMockLogger(ctrl)
+
 	tmpFile, err := os.CreateTemp("", "audit-test-*.log")
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +54,10 @@ func TestFileAuditObserver_Notify(t *testing.T) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	obs := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	obs, err := NewFileAuditObserver(tmpFile.Name(), mockLog)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	event := AuditEvent{
 		Ts:        1234567890,
@@ -77,6 +65,7 @@ func TestFileAuditObserver_Notify(t *testing.T) {
 		IPAddress: "10.0.0.1",
 	}
 	obs.Notify(event)
+	obs.Close()
 
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
@@ -99,6 +88,9 @@ func TestFileAuditObserver_Notify(t *testing.T) {
 }
 
 func TestFileAuditObserver_AppendsLines(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLog := NewMockLogger(ctrl)
+
 	tmpFile, err := os.CreateTemp("", "audit-test-*.log")
 	if err != nil {
 		t.Fatal(err)
@@ -106,10 +98,14 @@ func TestFileAuditObserver_AppendsLines(t *testing.T) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	obs := NewFileAuditObserver(tmpFile.Name(), mockLogger{})
+	obs, err := NewFileAuditObserver(tmpFile.Name(), mockLog)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	obs.Notify(AuditEvent{Ts: 1, Metrics: []string{"m1"}, IPAddress: "1.1.1.1"})
 	obs.Notify(AuditEvent{Ts: 2, Metrics: []string{"m2"}, IPAddress: "2.2.2.2"})
+	obs.Close()
 
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
@@ -129,6 +125,9 @@ func TestFileAuditObserver_AppendsLines(t *testing.T) {
 }
 
 func TestHTTPAuditObserver_Notify(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLog := NewMockLogger(ctrl)
+
 	var receivedBody []byte
 	var receivedContentType string
 
@@ -139,7 +138,7 @@ func TestHTTPAuditObserver_Notify(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	obs := NewHTTPAuditObserver(srv.URL, mockLogger{})
+	obs := NewHTTPAuditObserver(srv.URL, mockLog)
 
 	event := AuditEvent{
 		Ts:        9999,

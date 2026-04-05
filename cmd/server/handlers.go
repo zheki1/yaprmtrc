@@ -226,6 +226,7 @@ func (s *Server) valueHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "metric not found", http.StatusNotFound)
 }
 
+// MetricRow представляет строку таблицы на HTML-странице списка метрик.
 type MetricRow struct {
 	Name  string
 	Type  string
