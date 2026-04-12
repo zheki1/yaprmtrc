@@ -2,10 +2,30 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 )
+
+var buildVersion string
+var buildDate string
+var buildCommit string
+
+func printBuildInfo() {
+	if buildVersion == "" {
+		buildVersion = "N/A"
+	}
+	if buildDate == "" {
+		buildDate = "N/A"
+	}
+	if buildCommit == "" {
+		buildCommit = "N/A"
+	}
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
+}
 
 // Config хранит конфигурацию агента: адрес сервера, интервалы опроса и отправки,
 // ключ HMAC и лимит одновременных запросов.
@@ -18,6 +38,7 @@ type Config struct {
 }
 
 func main() {
+	printBuildInfo()
 	// default values
 	cfg := &Config{
 		Addr:           "localhost:8080",
