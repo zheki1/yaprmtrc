@@ -1,7 +1,18 @@
 package main
 
-import "os"
+import (
+	"log"
+	"os"
+)
 
 func main() {
-	os.Exit(1) // want "direct call to os.Exit in main function of main package is not allowed"
+	os.Exit(1)
+}
+
+func helper() {
+	log.Fatal("bye")
+	log.Fatalf("bye")
+	log.Fatalln("bye")
+	os.Exit(2)
+	panic("oops")
 }

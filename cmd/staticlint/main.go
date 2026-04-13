@@ -85,9 +85,8 @@
 //
 // ## Custom analyzer
 //
-//   - exitcheck: reports direct calls to os.Exit inside the main function of the
-//     main package. Using os.Exit bypasses deferred functions, potentially
-//     leaking resources. Prefer log.Fatal or returning an error code.
+//   - exitcheck: reports calls to os.Exit, log.Fatal/Fatalf/Fatalln, and panic
+//     anywhere in the main package
 package main
 
 import (

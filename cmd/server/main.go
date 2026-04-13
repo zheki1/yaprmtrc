@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zheki1/yaprmtrc/internal/buildinfo"
 	"github.com/zheki1/yaprmtrc/internal/models"
 	"github.com/zheki1/yaprmtrc/internal/repository"
 
@@ -23,26 +24,20 @@ var buildVersion string
 var buildDate string
 var buildCommit string
 
-func printBuildInfo() {
-	if buildVersion == "" {
-		buildVersion = "N/A"
+func main() {
+	buildinfo.Version = buildVersion
+	buildinfo.Date = buildDate
+	buildinfo.Commit = buildCommit
+	buildinfo.Print()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "server: %v\n", err)
 	}
-	if buildDate == "" {
-		buildDate = "N/A"
-	}
-	if buildCommit == "" {
-		buildCommit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", buildVersion)
-	fmt.Printf("Build date: %s\n", buildDate)
-	fmt.Printf("Build commit: %s\n", buildCommit)
 }
 
-func main() {
-	printBuildInfo()
+func run() error {
 	logger, err := NewLogger()
 	if err != nil {
-		log.Fatalf("cannot init logger: %v", err)
+		return fmt.Errorf("cannot init logger: %w", err)
 	}
 	defer func() {
 		if err := logger.Sync(); err != nil {
@@ -56,15 +51,12 @@ func main() {
 	if cfg.DatabaseDSN != "" {
 		conn, err := pgxpool.New(context.Background(), cfg.DatabaseDSN)
 		if err != nil {
-			logger.Fatalw(
-				"failed to connect to database",
-				"error", err,
-			)
+			return fmt.Errorf("failed to connect to database: %w", err)
 		}
 		dbConn = conn
 		if dbConn != nil {
 			if err := runMigrations(cfg.DatabaseDSN); err != nil {
-				logger.Fatalw("migration failed", "error", err)
+				return fmt.Errorf("migration failed: %w", err)
 			}
 		}
 	}
@@ -114,7 +106,8 @@ func main() {
 			for range ticker.C {
 				metrics, err := storage.GetAll(context.Background())
 				if err != nil {
-					log.Fatal(err.Error())
+					log.Printf("cannot get metrics for save: %s", err.Error())
+					continue
 				}
 				if err := fileStorage.Save(metrics); err != nil {
 					log.Printf("cannot save metrics into file %s", err.Error())
@@ -136,7 +129,7 @@ func main() {
 	if cfg.AuditFile != "" {
 		fileObs, err := NewFileAuditObserver(cfg.AuditFile, logger)
 		if err != nil {
-			log.Fatalf("audit file observer: %v", err)
+			return fmt.Errorf("audit file observer: %w", err)
 		}
 		defer fileObs.Close()
 		server.audit.Register(fileObs)
@@ -153,7 +146,7 @@ func main() {
 	go func() {
 		log.Printf("Starting server on %s\n", cfg.Address)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Listen failed %s", err.Error())
+			log.Printf("Listen failed %s", err.Error())
 		}
 	}()
 
@@ -172,15 +165,15 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("http server shutdown failed %s", err.Error())
+		return fmt.Errorf("http server shutdown failed: %w", err)
 	}
 
 	metrics, err := storage.GetAll(context.Background())
 	if err != nil {
-		log.Fatal(err.Error())
+		return fmt.Errorf("cannot get metrics on shutdown: %w", err)
 	}
 	if err := fileStorage.Save(metrics); err != nil {
-		log.Fatalf("Metrics save failed %s", err.Error())
+		return fmt.Errorf("metrics save failed: %w", err)
 	} else {
 		log.Print("Metrics saved successfully")
 	}
@@ -190,6 +183,7 @@ func main() {
 			logger.Errorw("storage close failed", "error", err)
 		}
 	}
+	return nil
 }
 
 func runMigrations(dsn string) error {
