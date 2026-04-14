@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,7 +75,7 @@ func ExampleServer_valueHandler() {
 	defer ts.Close()
 
 	// предварительно записываем метрику
-	_ = s.storage.UpdateGauge(nil, "Alloc", 123456)
+	_ = s.storage.UpdateGauge(context.Background(), "Alloc", 123456)
 
 	resp, err := http.Get(ts.URL + "/value/gauge/Alloc")
 	if err != nil {
@@ -97,7 +98,7 @@ func ExampleServer_valueHandlerJSON() {
 	defer ts.Close()
 
 	value := 3.14
-	_ = s.storage.UpdateGauge(nil, "TestGauge", value)
+	_ = s.storage.UpdateGauge(context.Background(), "TestGauge", value)
 
 	reqBody, _ := json.Marshal(models.Metrics{
 		ID:    "TestGauge",
@@ -152,7 +153,7 @@ func ExampleServer_pageHandler() {
 	ts, s := newExampleServer()
 	defer ts.Close()
 
-	_ = s.storage.UpdateGauge(nil, "Temp", 36.6)
+	_ = s.storage.UpdateGauge(context.Background(), "Temp", 36.6)
 
 	resp, err := http.Get(ts.URL + "/")
 	if err != nil {

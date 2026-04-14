@@ -2,10 +2,16 @@ package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/zheki1/yaprmtrc/internal/buildinfo"
 )
+
+var buildVersion string
+var buildDate string
+var buildCommit string
 
 // Config хранит конфигурацию агента: адрес сервера, интервалы опроса и отправки,
 // ключ HMAC и лимит одновременных запросов.
@@ -18,6 +24,16 @@ type Config struct {
 }
 
 func main() {
+	buildinfo.Version = buildVersion
+	buildinfo.Date = buildDate
+	buildinfo.Commit = buildCommit
+	buildinfo.Print()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "agent: %v\n", err)
+	}
+}
+
+func run() error {
 	// default values
 	cfg := &Config{
 		Addr:           "localhost:8080",
@@ -36,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
-		log.Fatalf("unknown flags: %v", flag.Args())
+		return fmt.Errorf("unknown flags: %v", flag.Args())
 	}
 
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
@@ -46,7 +62,7 @@ func main() {
 	if v, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
 		i, err := strconv.Atoi(v)
 		if err != nil || i <= 0 {
-			log.Fatalf("invalid REPORT_INTERVAL: %s", v)
+			return fmt.Errorf("invalid REPORT_INTERVAL: %s", v)
 		}
 		cfg.ReportInterval = i
 	}
@@ -54,7 +70,7 @@ func main() {
 	if v, ok := os.LookupEnv("POLL_INTERVAL"); ok {
 		i, err := strconv.Atoi(v)
 		if err != nil || i <= 0 {
-			log.Fatalf("invalid POLL_INTERVAL: %s", v)
+			return fmt.Errorf("invalid POLL_INTERVAL: %s", v)
 		}
 		cfg.PollInterval = i
 	}
@@ -66,11 +82,15 @@ func main() {
 	if v, ok := os.LookupEnv("RATE_LIMIT"); ok {
 		i, err := strconv.Atoi(v)
 		if err != nil || i <= 0 {
-			log.Fatalf("invalid RATE_LIMIT: %s", v)
+			return fmt.Errorf("invalid RATE_LIMIT: %s", v)
 		}
 		cfg.RateLimit = i
 	}
 
-	agent := NewAgent(cfg)
+	agent, err := NewAgent(cfg)
+	if err != nil {
+		return err
+	}
 	agent.Start()
+	return nil
 }

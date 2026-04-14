@@ -98,7 +98,10 @@ func TestNewAgent(t *testing.T) {
 		RateLimit:      1,
 	}
 
-	a := NewAgent(cfg)
+	a, err := NewAgent(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if a == nil {
 		t.Fatal("expected non-nil agent")
 	}

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"time"
@@ -31,10 +30,10 @@ type Agent struct {
 }
 
 // NewAgent создаёт новый агент с указанной конфигурацией.
-func NewAgent(cfg *Config) *Agent {
+func NewAgent(cfg *Config) (*Agent, error) {
 	logger, err := NewLogger()
 	if err != nil {
-		log.Fatalf("cannot init logger: %v", err)
+		return nil, fmt.Errorf("cannot init logger: %w", err)
 	}
 	return &Agent{
 		cfg:    cfg,
@@ -43,7 +42,7 @@ func NewAgent(cfg *Config) *Agent {
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
-	}
+	}, nil
 }
 
 // Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
