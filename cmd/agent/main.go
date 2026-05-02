@@ -21,6 +21,7 @@ type Config struct {
 	PollInterval   int
 	Key            string
 	RateLimit      int
+	CryptoKey      string
 }
 
 func main() {
@@ -41,6 +42,7 @@ func run() error {
 		PollInterval:   2,
 		Key:            "",
 		RateLimit:      1,
+		CryptoKey:      "",
 	}
 
 	// flags
@@ -48,7 +50,8 @@ func run() error {
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval in seconds")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
-	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Poll interval in seconds")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
@@ -85,6 +88,10 @@ func run() error {
 			return fmt.Errorf("invalid RATE_LIMIT: %s", v)
 		}
 		cfg.RateLimit = i
+	}
+
+	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		cfg.CryptoKey = v
 	}
 
 	agent, err := NewAgent(cfg)

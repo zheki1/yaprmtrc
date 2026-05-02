@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/security"
 )
 
 func (s *Server) valueHandlerJSON(w http.ResponseWriter, r *http.Request) {
@@ -106,8 +107,31 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	buf, err := io.ReadAll(reader)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if r.Header.Get("Encrypted") == "true" {
+		if s.cryptoKey == "" {
+			http.Error(w, "encryption required but no private key", http.StatusBadRequest)
+			return
+		}
+		privKey, err := security.LoadPrivateKey(s.cryptoKey)
+		if err != nil {
+			http.Error(w, "failed to load private key", http.StatusInternalServerError)
+			return
+		}
+		buf, err = security.DecryptHybrid(buf, privKey)
+		if err != nil {
+			http.Error(w, "failed to decrypt payload", http.StatusBadRequest)
+			return
+		}
+	}
+
 	var m models.Metrics
-	if err := json.NewDecoder(reader).Decode(&m); err != nil {
+	if err := json.Unmarshal(buf, &m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -331,8 +355,31 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	buf, err := io.ReadAll(reader)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if r.Header.Get("Encrypted") == "true" {
+		if s.cryptoKey == "" {
+			http.Error(w, "encryption required but no private key", http.StatusBadRequest)
+			return
+		}
+		privKey, err := security.LoadPrivateKey(s.cryptoKey)
+		if err != nil {
+			http.Error(w, "failed to load private key", http.StatusInternalServerError)
+			return
+		}
+		buf, err = security.DecryptHybrid(buf, privKey)
+		if err != nil {
+			http.Error(w, "failed to decrypt payload", http.StatusBadRequest)
+			return
+		}
+	}
+
 	var m []models.Metrics
-	if err := json.NewDecoder(reader).Decode(&m); err != nil {
+	if err := json.Unmarshal(buf, &m); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
