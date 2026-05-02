@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -24,6 +25,9 @@ type Agent struct {
 	cfg    *Config
 	client *resty.Client
 	logger *zap.SugaredLogger
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -35,10 +39,13 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot init logger: %w", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Agent{
 		cfg:    cfg,
 		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
 		logger: logger,
+		ctx:    ctx,
+		cancel: cancel,
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
@@ -53,36 +60,57 @@ func (a *Agent) Start() {
 	jobs := make(chan Job, a.cfg.RateLimit)
 	StartWorkers(a.cfg.RateLimit, jobs)
 
+	a.wg.Add(3)
+
 	go func() {
+		defer a.wg.Done()
 		ticker := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
 		defer ticker.Stop()
 
 		a.collectRuntimeMetrics()
-		for range ticker.C {
-			a.collectRuntimeMetrics()
+		for {
+			select {
+			case <-ticker.C:
+				a.collectRuntimeMetrics()
+			case <-a.ctx.Done():
+				return
+			}
 		}
 	}()
 
 	go func() {
+		defer a.wg.Done()
 		ticker := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
 		defer ticker.Stop()
 
 		a.collectGopsutilMetrics()
-		for range ticker.C {
-			a.collectGopsutilMetrics()
+		for {
+			select {
+			case <-ticker.C:
+				a.collectGopsutilMetrics()
+			case <-a.ctx.Done():
+				return
+			}
 		}
 	}()
 
 	go func() {
+		defer a.wg.Done()
 		ticker := time.NewTicker(time.Duration(a.cfg.ReportInterval) * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			a.sendAllMetrics(jobs)
+		for {
+			select {
+			case <-ticker.C:
+				a.sendAllMetrics(jobs)
+			case <-a.ctx.Done():
+				return
+			}
 		}
 	}()
 
-	select {}
+	a.wg.Wait()
+	a.logger.Infoln("Agent shut down gracefully")
 
 	// TODO - use sync.WaitGroup to wait for workers to finish (on graceful shutdown implementing)
 }
@@ -112,7 +140,7 @@ func (a *Agent) sendAllMetrics(jobs chan<- Job) {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics) error {
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metric)
 		if err != nil {
 			return err
@@ -150,7 +178,7 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics) error {
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metrics)
 		if err != nil {
 			return err

@@ -155,6 +155,7 @@ func run() error {
 		context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
+		syscall.SIGQUIT,
 	)
 	defer stop()
 
