@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/zheki1/yaprmtrc/internal/buildinfo"
@@ -125,6 +127,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	go func() {
+		<-c
+		fmt.Println("Received shutdown signal, shutting down agent...")
+		agent.cancel()
+	}()
+
 	agent.Start()
 	return nil
 }
