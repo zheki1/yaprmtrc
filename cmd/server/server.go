@@ -17,6 +17,7 @@ type Server struct {
 	db          *pgxpool.Pool
 	key         string
 	audit       *AuditPublisher
+	cryptoKey   string
 }
 
 func (s *Server) saveIfNeeded() {

@@ -124,6 +124,7 @@ func run() error {
 		db:          dbConn,
 		key:         cfg.Key,
 		audit:       NewAuditPublisher(logger),
+		cryptoKey:   cfg.CryptoKey,
 	}
 
 	if cfg.AuditFile != "" {
@@ -155,6 +156,7 @@ func run() error {
 		context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
+		syscall.SIGQUIT,
 	)
 	defer stop()
 
