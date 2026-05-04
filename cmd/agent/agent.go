@@ -119,12 +119,8 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 		}
 
 		body := payload
-		if a.cfg.CryptoKey != "" {
-			pubKey, err := security.LoadPublicKey(a.cfg.CryptoKey)
-			if err != nil {
-				return fmt.Errorf("failed to load public key: %w", err)
-			}
-			body, err = security.EncryptHybrid(payload, pubKey)
+		if a.cfg.CachedPublicKey != nil {
+			body, err = security.EncryptHybrid(payload, a.cfg.CachedPublicKey)
 			if err != nil {
 				return fmt.Errorf("failed to encrypt payload: %w", err)
 			}
@@ -140,7 +136,7 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 			SetHeader("Content-Encoding", "gzip").
 			SetBody(body)
 
-		if a.cfg.CryptoKey != "" {
+		if a.cfg.CachedPublicKey != nil {
 			req.SetHeader("Encrypted", "true")
 		}
 
@@ -173,12 +169,8 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 		}
 
 		body := payload
-		if a.cfg.CryptoKey != "" {
-			pubKey, err := security.LoadPublicKey(a.cfg.CryptoKey)
-			if err != nil {
-				return fmt.Errorf("failed to load public key: %w", err)
-			}
-			body, err = security.EncryptHybrid(payload, pubKey)
+		if a.cfg.CachedPublicKey != nil {
+			body, err = security.EncryptHybrid(payload, a.cfg.CachedPublicKey)
 			if err != nil {
 				return fmt.Errorf("failed to encrypt payload: %w", err)
 			}
@@ -194,7 +186,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 			SetHeader("Content-Encoding", "gzip").
 			SetBody(body)
 
-		if a.cfg.CryptoKey != "" {
+		if a.cfg.CachedPublicKey != nil {
 			req.SetHeader("Encrypted", "true")
 		}
 

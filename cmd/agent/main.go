@@ -1,12 +1,14 @@
 package main
 
 import (
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/zheki1/yaprmtrc/internal/buildinfo"
+	"github.com/zheki1/yaprmtrc/internal/security"
 )
 
 var buildVersion string
@@ -16,12 +18,13 @@ var buildCommit string
 // Config хранит конфигурацию агента: адрес сервера, интервалы опроса и отправки,
 // ключ HMAC и лимит одновременных запросов.
 type Config struct {
-	Addr           string
-	ReportInterval int
-	PollInterval   int
-	Key            string
-	RateLimit      int
-	CryptoKey      string
+	Addr            string
+	ReportInterval  int
+	PollInterval    int
+	Key             string
+	RateLimit       int
+	CryptoKey       string
+	CachedPublicKey *rsa.PublicKey
 }
 
 func main() {
@@ -92,6 +95,15 @@ func run() error {
 
 	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
 		cfg.CryptoKey = v
+	}
+
+	// Load and cache public key if specified
+	if cfg.CryptoKey != "" {
+		pubKey, err := security.LoadPublicKey(cfg.CryptoKey)
+		if err != nil {
+			return fmt.Errorf("failed to load public key: %w", err)
+		}
+		cfg.CachedPublicKey = pubKey
 	}
 
 	agent, err := NewAgent(cfg)
