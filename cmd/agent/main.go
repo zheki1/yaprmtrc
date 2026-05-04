@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -61,28 +62,36 @@ func run() error {
 		ConfigFile:     "",
 	}
 
-	// flags
-	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "Address of metrics server")
-	flag.DurationVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval")
-	flag.DurationVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval")
-	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
-	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
-	flag.StringVar(&cfg.ConfigFile, "c", cfg.ConfigFile, "config file path")
-	flag.StringVar(&cfg.ConfigFile, "config", cfg.ConfigFile, "config file path")
-	flag.Parse()
-
-	if len(flag.Args()) != 0 {
-		return fmt.Errorf("unknown flags: %v", flag.Args())
+	// First, determine config file from flags or environment
+	// This is done before full flag parsing to ensure config file can be loaded
+	configFile := ""
+	for i, arg := range os.Args[1:] {
+		if arg == "-c" || arg == "-config" {
+			if i+1 < len(os.Args)-1 {
+				configFile = os.Args[i+2]
+				break
+			}
+		} else if len(arg) > 3 && (arg[:2] == "-c=" || arg[:8] == "-config=") {
+			configFile = arg[strings.Index(arg, "=")+1:]
+			break
+		}
 	}
 
-	// load from config file if specified
-	if cfg.ConfigFile != "" {
-		if err := loadAgentConfigFromFile(cfg.ConfigFile, cfg); err != nil {
+	// Check environment variable if config file not found in flags
+	if configFile == "" {
+		if v, ok := os.LookupEnv("CONFIG"); ok {
+			configFile = v
+		}
+	}
+
+	// Load from config file if specified
+	if configFile != "" {
+		if err := loadAgentConfigFromFile(configFile, cfg); err != nil {
 			return fmt.Errorf("failed to load config from file: %w", err)
 		}
 	}
 
+	// Load from environment variables (override config file)
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Addr = v
 	}
@@ -119,8 +128,19 @@ func run() error {
 		cfg.CryptoKey = v
 	}
 
-	if v, ok := os.LookupEnv("CONFIG"); ok {
-		cfg.ConfigFile = v
+	// Parse flags (highest priority - overrides everything)
+	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "Address of metrics server")
+	flag.DurationVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval")
+	flag.DurationVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
+	flag.StringVar(&cfg.ConfigFile, "c", "", "config file path")
+	flag.StringVar(&cfg.ConfigFile, "config", "", "config file path")
+	flag.Parse()
+
+	if len(flag.Args()) != 0 {
+		return fmt.Errorf("unknown flags: %v", flag.Args())
 	}
 
 	agent, err := NewAgent(cfg)
