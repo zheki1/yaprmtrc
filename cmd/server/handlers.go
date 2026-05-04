@@ -114,16 +114,11 @@ func (s *Server) updateHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("Encrypted") == "true" {
-		if s.cryptoKey == "" {
+		if s.cachedPrivateKey == nil {
 			http.Error(w, "encryption required but no private key", http.StatusBadRequest)
 			return
 		}
-		privKey, err := security.LoadPrivateKey(s.cryptoKey)
-		if err != nil {
-			http.Error(w, "failed to load private key", http.StatusInternalServerError)
-			return
-		}
-		buf, err = security.DecryptHybrid(buf, privKey)
+		buf, err = security.DecryptHybrid(buf, s.cachedPrivateKey)
 		if err != nil {
 			http.Error(w, "failed to decrypt payload", http.StatusBadRequest)
 			return
@@ -362,16 +357,11 @@ func (s *Server) batchUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("Encrypted") == "true" {
-		if s.cryptoKey == "" {
+		if s.cachedPrivateKey == nil {
 			http.Error(w, "encryption required but no private key", http.StatusBadRequest)
 			return
 		}
-		privKey, err := security.LoadPrivateKey(s.cryptoKey)
-		if err != nil {
-			http.Error(w, "failed to load private key", http.StatusInternalServerError)
-			return
-		}
-		buf, err = security.DecryptHybrid(buf, privKey)
+		buf, err = security.DecryptHybrid(buf, s.cachedPrivateKey)
 		if err != nil {
 			http.Error(w, "failed to decrypt payload", http.StatusBadRequest)
 			return

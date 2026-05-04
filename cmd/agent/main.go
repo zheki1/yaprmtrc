@@ -92,6 +92,7 @@ func run() error {
 		if err := loadAgentConfigFromFile(configFile, cfg); err != nil {
 			return fmt.Errorf("failed to load config from file: %w", err)
 		}
+		cfg.ConfigFile = configFile
 	}
 
 	// Load from environment variables (override config file)
@@ -131,6 +132,14 @@ func run() error {
 		cfg.CryptoKey = v
 	}
 
+	// If CONFIG environment variable specifies a different config file, reload it
+	if v, ok := os.LookupEnv("CONFIG"); ok && v != cfg.ConfigFile {
+		if err := loadAgentConfigFromFile(v, cfg); err != nil {
+			return fmt.Errorf("failed to load config from file: %w", err)
+		}
+		cfg.ConfigFile = v
+	}
+
 	// Parse flags (highest priority - overrides everything)
 	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "Address of metrics server")
 	flag.DurationVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval")
@@ -138,12 +147,19 @@ func run() error {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
-	flag.StringVar(&cfg.ConfigFile, "c", "", "config file path")
-	flag.StringVar(&cfg.ConfigFile, "config", "", "config file path")
+	flag.StringVar(&cfg.ConfigFile, "c", cfg.ConfigFile, "config file path")
+	flag.StringVar(&cfg.ConfigFile, "config", cfg.ConfigFile, "config file path")
 	flag.Parse()
 
 	if len(flag.Args()) != 0 {
 		return fmt.Errorf("unknown flags: %v", flag.Args())
+	}
+
+	// If config file flag was set and is different from current, reload it
+	if cfg.ConfigFile != "" && cfg.ConfigFile != configFile {
+		if err := loadAgentConfigFromFile(cfg.ConfigFile, cfg); err != nil {
+			return fmt.Errorf("failed to load config from file: %w", err)
+		}
 	}
 
 	// Load and cache public key if specified

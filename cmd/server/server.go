@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zheki1/yaprmtrc/internal/repository"
@@ -10,14 +11,15 @@ import (
 // Server — центральная структура HTTP-сервера сбора метрик.
 // Содержит хранилище, логгер, файловое хранилище, подключение к БД и настройки аудита.
 type Server struct {
-	storage     repository.Repository
-	logger      Logger
-	fileStorage *FileStorage
-	syncSave    bool
-	db          *pgxpool.Pool
-	key         string
-	audit       *AuditPublisher
-	cryptoKey   string
+	storage          repository.Repository
+	logger           Logger
+	fileStorage      *FileStorage
+	syncSave         bool
+	db               *pgxpool.Pool
+	key              string
+	audit            *AuditPublisher
+	cryptoKey        string
+	cachedPrivateKey *rsa.PrivateKey
 }
 
 func (s *Server) saveIfNeeded() {

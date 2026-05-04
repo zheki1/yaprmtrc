@@ -117,14 +117,15 @@ func run() error {
 	}
 
 	server := &Server{
-		logger:      logger,
-		storage:     storage,
-		fileStorage: fileStorage,
-		syncSave:    cfg.StoreInterval == 0,
-		db:          dbConn,
-		key:         cfg.Key,
-		audit:       NewAuditPublisher(logger),
-		cryptoKey:   cfg.CryptoKey,
+		logger:           logger,
+		storage:          storage,
+		fileStorage:      fileStorage,
+		syncSave:         cfg.StoreInterval == 0,
+		db:               dbConn,
+		key:              cfg.Key,
+		audit:            NewAuditPublisher(logger),
+		cryptoKey:        cfg.CryptoKey,
+		cachedPrivateKey: cfg.CachedPrivateKey,
 	}
 
 	if cfg.AuditFile != "" {
