@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,7 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zheki1/yaprmtrc/internal/buildinfo"
 	"github.com/zheki1/yaprmtrc/internal/models"
+	"github.com/zheki1/yaprmtrc/internal/proto/pb"
 	"github.com/zheki1/yaprmtrc/internal/repository"
+	"google.golang.org/grpc"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -149,6 +152,29 @@ func run() error {
 		log.Printf("Starting server on %s\n", cfg.Address)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Listen failed %s", err.Error())
+		}
+	}()
+
+	// Инициализируем gRPC сервер с перехватчиком для проверки подсети
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(NewTrustedSubnetInterceptor(cfg.TrustedSubnet, logger)),
+	)
+	defer grpcServer.GracefulStop()
+
+	// Регистрируем gRPC сервис
+	metricsService := NewMetricsServiceImpl(server)
+	pb.RegisterMetricsServer(grpcServer, metricsService)
+
+	// Запускаем gRPC сервер в отдельной горутине
+	go func() {
+		listener, err := net.Listen("tcp", cfg.GRPCAddr)
+		if err != nil {
+			log.Printf("Failed to listen on %s: %v", cfg.GRPCAddr, err)
+			return
+		}
+		log.Printf("Starting gRPC server on %s\n", cfg.GRPCAddr)
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Printf("gRPC server failed: %v", err)
 		}
 	}()
 

@@ -21,12 +21,14 @@ type Config struct {
 	AuditURL        string
 	CryptoKey       string
 	TrustedSubnet   string
+	GRPCAddr        string
 }
 
 // fileConfig описывает структуру JSON-файла конфигурации.
 // Все поля — указатели, чтобы отличать явно заданные значения от отсутствующих.
 type fileConfig struct {
 	Address       *string `json:"address"`
+	GRPCAddr      *string `json:"grpc_address"`
 	Restore       *bool   `json:"restore"`
 	StoreInterval *string `json:"store_interval"`
 	StoreFile     *string `json:"store_file"`
@@ -68,6 +70,7 @@ func LoadConfig(logger Logger) *Config {
 		AuditURL:        "",
 		CryptoKey:       "",
 		TrustedSubnet:   "",
+		GRPCAddr:        "localhost:50051",
 	}
 
 	var (
@@ -80,6 +83,7 @@ func LoadConfig(logger Logger) *Config {
 		flagAuditFile       = flag.String("audit-file", defaults.AuditFile, "audit log file path")
 		flagAuditURL        = flag.String("audit-url", defaults.AuditURL, "audit log remote URL")
 		flagCryptoKey       = flag.String("crypto-key", defaults.CryptoKey, "path to private key file")
+		flagGRPCAddr        = flag.String("grpc-addr", defaults.GRPCAddr, "gRPC server address")
 		flagConfigFile      = flag.String("c", "", "path to JSON config file")
 	)
 	flag.StringVar(flagConfigFile, "config", "", "path to JSON config file (alias for -c)")
@@ -104,6 +108,9 @@ func LoadConfig(logger Logger) *Config {
 		if fc.Address != nil {
 			cfg.Address = *fc.Address
 		}
+		if fc.GRPCAddr != nil {
+			cfg.GRPCAddr = *fc.GRPCAddr
+		}
 		if fc.Restore != nil {
 			cfg.Restore = *fc.Restore
 		}
@@ -122,6 +129,9 @@ func LoadConfig(logger Logger) *Config {
 		}
 		if fc.CryptoKey != nil {
 			cfg.CryptoKey = *fc.CryptoKey
+		}
+		if fc.TrustedSubnet != nil {
+			cfg.TrustedSubnet = *fc.TrustedSubnet
 		}
 	}
 
@@ -148,12 +158,17 @@ func LoadConfig(logger Logger) *Config {
 			cfg.AuditURL = *flagAuditURL
 		case "crypto-key":
 			cfg.CryptoKey = *flagCryptoKey
+		case "grpc-addr":
+			cfg.GRPCAddr = *flagGRPCAddr
 		}
 	})
 
 	// переменные окружения (наивысший приоритет)
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
+	}
+	if v, ok := os.LookupEnv("GRPC_ADDR"); ok {
+		cfg.GRPCAddr = v
 	}
 	if v, ok := os.LookupEnv("STORE_INTERVAL"); ok {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -188,6 +203,9 @@ func LoadConfig(logger Logger) *Config {
 	}
 	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
 		cfg.CryptoKey = v
+	}
+	if v, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+		cfg.TrustedSubnet = v
 	}
 
 	return &cfg

@@ -24,12 +24,16 @@ type Config struct {
 	Key            string
 	RateLimit      int
 	CryptoKey      string
+	UseGRPC        bool
+	GRPCAddr       string
 }
 
 // fileConfig описывает структуру JSON-файла конфигурации агента.
 // Все поля — указатели, чтобы отличать явно заданные значения от отсутствующих.
 type fileConfig struct {
 	Address        *string `json:"address"`
+	GRPCAddr       *string `json:"grpc_address"`
+	UseGRPC        *bool   `json:"use_grpc"`
 	ReportInterval *string `json:"report_interval"`
 	PollInterval   *string `json:"poll_interval"`
 	CryptoKey      *string `json:"crypto_key"`
@@ -54,6 +58,8 @@ func run() error {
 		Key:            "",
 		RateLimit:      1,
 		CryptoKey:      "",
+		UseGRPC:        false,
+		GRPCAddr:       "localhost:50051",
 	}
 
 	// flags
@@ -64,6 +70,8 @@ func run() error {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
+	flag.BoolVar(&cfg.UseGRPC, "grpc", cfg.UseGRPC, "Use gRPC protocol for metrics")
+	flag.StringVar(&cfg.GRPCAddr, "grpc-addr", cfg.GRPCAddr, "gRPC server address")
 	flag.StringVar(&flagConfigFile, "c", "", "Path to JSON config file")
 	flag.StringVar(&flagConfigFile, "config", "", "Path to JSON config file (alias for -c)")
 	flag.Parse()
@@ -86,6 +94,12 @@ func run() error {
 		}
 		if fc.Address != nil {
 			cfg.Addr = *fc.Address
+		}
+		if fc.GRPCAddr != nil {
+			cfg.GRPCAddr = *fc.GRPCAddr
+		}
+		if fc.UseGRPC != nil {
+			cfg.UseGRPC = *fc.UseGRPC
 		}
 		if fc.ReportInterval != nil {
 			sec, err := parseDurationSeconds(*fc.ReportInterval)
@@ -127,6 +141,12 @@ func run() error {
 			}
 		case "crypto-key":
 			cfg.CryptoKey = f.Value.String()
+		case "grpc":
+			if v, err := strconv.ParseBool(f.Value.String()); err == nil {
+				cfg.UseGRPC = v
+			}
+		case "grpc-addr":
+			cfg.GRPCAddr = f.Value.String()
 		}
 	})
 
@@ -160,6 +180,14 @@ func run() error {
 	}
 	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
 		cfg.CryptoKey = v
+	}
+	if v, ok := os.LookupEnv("USE_GRPC"); ok {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.UseGRPC = b
+		}
+	}
+	if v, ok := os.LookupEnv("GRPC_ADDR"); ok {
+		cfg.GRPCAddr = v
 	}
 
 	agent, err := NewAgent(cfg)

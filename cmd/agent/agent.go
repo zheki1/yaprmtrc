@@ -21,10 +21,11 @@ import (
 // Agent — агент сбора метрик. Периодически собирает runtime- и gopsutil-метрики
 // и отправляет их на сервер пакетно (через /updates).
 type Agent struct {
-	cfg     *Config
-	client  *resty.Client
-	logger  *zap.SugaredLogger
-	agentIP string
+	cfg        *Config
+	client     *resty.Client
+	logger     *zap.SugaredLogger
+	agentIP    string
+	grpcClient *GRPCClient
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -39,7 +40,7 @@ func NewAgent(cfg *Config) (*Agent, error) {
 
 	agentIP := getAgentIP()
 
-	return &Agent{
+	agent := &Agent{
 		cfg:     cfg,
 		client:  resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
 		logger:  logger,
@@ -47,7 +48,19 @@ func NewAgent(cfg *Config) (*Agent, error) {
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
-	}, nil
+	}
+
+	// Если используется gRPC, инициализируем gRPC клиент
+	if cfg.UseGRPC {
+		grpcClient, err := NewGRPCClient(cfg.GRPCAddr, agentIP, logger)
+		if err != nil {
+			logger.Warnf("failed to initialize gRPC client: %v, falling back to HTTP", err)
+		} else {
+			agent.grpcClient = grpcClient
+		}
+	}
+
+	return agent, nil
 }
 
 // getAgentIP получает IP адрес хоста агента
@@ -193,6 +206,12 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics) error {
+	// Если доступен gRPC клиент, используем его
+	if a.grpcClient != nil {
+		return a.grpcClient.SendMetrics(context.Background(), metrics)
+	}
+
+	// Иначе используем HTTP
 	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metrics)
 		if err != nil {
