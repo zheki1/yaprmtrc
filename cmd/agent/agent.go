@@ -54,7 +54,7 @@ func NewAgent(cfg *Config) (*Agent, error) {
 
 // Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
 func (a *Agent) Start() {
-	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%v, report=%v\n",
+	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval))
 
 	jobs := make(chan Job, a.cfg.RateLimit)
@@ -64,7 +64,7 @@ func (a *Agent) Start() {
 
 	go func() {
 		defer a.wg.Done()
-		ticker := time.NewTicker(a.cfg.PollInterval)
+		ticker := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
 		defer ticker.Stop()
 
 		a.collectRuntimeMetrics()
@@ -80,7 +80,7 @@ func (a *Agent) Start() {
 
 	go func() {
 		defer a.wg.Done()
-		ticker := time.NewTicker(a.cfg.PollInterval)
+		ticker := time.NewTicker(time.Duration(a.cfg.PollInterval) * time.Second)
 		defer ticker.Stop()
 
 		a.collectGopsutilMetrics()
@@ -96,7 +96,7 @@ func (a *Agent) Start() {
 
 	go func() {
 		defer a.wg.Done()
-		ticker := time.NewTicker(a.cfg.ReportInterval)
+		ticker := time.NewTicker(time.Duration(a.cfg.ReportInterval) * time.Second)
 		defer ticker.Stop()
 
 		for {

@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/zheki1/yaprmtrc/internal/buildinfo"
 )
@@ -20,8 +19,8 @@ var buildCommit string
 // AgentConfig представляет конфигурацию агента из JSON файла.
 type AgentConfig struct {
 	Address        string `json:"address,omitempty"`
-	ReportInterval string `json:"report_interval,omitempty"`
-	PollInterval   string `json:"poll_interval,omitempty"`
+	ReportInterval *int   `json:"report_interval,omitempty"`
+	PollInterval   *int   `json:"poll_interval,omitempty"`
 	CryptoKey      string `json:"crypto_key,omitempty"`
 	Key            string `json:"key,omitempty"`
 	RateLimit      *int   `json:"rate_limit,omitempty"`
@@ -31,8 +30,8 @@ type AgentConfig struct {
 // ключ HMAC и лимит одновременных запросов.
 type Config struct {
 	Addr           string
-	ReportInterval time.Duration
-	PollInterval   time.Duration
+	ReportInterval int
+	PollInterval   int
 	Key            string
 	RateLimit      int
 	CryptoKey      string
@@ -53,8 +52,8 @@ func run() error {
 	// default values
 	cfg := &Config{
 		Addr:           "localhost:8080",
-		ReportInterval: 10 * time.Second,
-		PollInterval:   2 * time.Second,
+		ReportInterval: 10,
+		PollInterval:   2,
 		Key:            "",
 		RateLimit:      1,
 		CryptoKey:      "",
@@ -63,8 +62,8 @@ func run() error {
 
 	// flags
 	flag.StringVar(&cfg.Addr, "a", cfg.Addr, "Address of metrics server")
-	flag.DurationVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval")
-	flag.DurationVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval")
+	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "Report interval")
+	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "Poll interval")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Rate limit")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to public key file")
@@ -88,19 +87,19 @@ func run() error {
 	}
 
 	if v, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
-		if d, err := time.ParseDuration(v); err != nil {
+		i, err := strconv.Atoi(v)
+		if err != nil || i <= 0 {
 			return fmt.Errorf("invalid REPORT_INTERVAL: %s", v)
-		} else {
-			cfg.ReportInterval = d
 		}
+		cfg.ReportInterval = i
 	}
 
 	if v, ok := os.LookupEnv("POLL_INTERVAL"); ok {
-		if d, err := time.ParseDuration(v); err != nil {
-			return fmt.Errorf("invalid POLL_INTERVAL: %s", v)
-		} else {
-			cfg.PollInterval = d
+		i, err := strconv.Atoi(v)
+		if err != nil || i <= 0 {
+			return fmt.Errorf("invalid REPORT_INTERVAL: %s", v)
 		}
+		cfg.PollInterval = i
 	}
 
 	if v, ok := os.LookupEnv("KEY"); ok {
@@ -154,15 +153,11 @@ func loadAgentConfigFromFile(path string, cfg *Config) error {
 	if ac.Address != "" {
 		cfg.Addr = ac.Address
 	}
-	if ac.ReportInterval != "" {
-		if d, err := time.ParseDuration(ac.ReportInterval); err == nil {
-			cfg.ReportInterval = d
-		}
+	if ac.ReportInterval != nil {
+		cfg.ReportInterval = *ac.ReportInterval
 	}
-	if ac.PollInterval != "" {
-		if d, err := time.ParseDuration(ac.PollInterval); err == nil {
-			cfg.PollInterval = d
-		}
+	if ac.PollInterval != nil {
+		cfg.PollInterval = *ac.PollInterval
 	}
 	if ac.CryptoKey != "" {
 		cfg.CryptoKey = ac.CryptoKey
