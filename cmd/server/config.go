@@ -18,6 +18,7 @@ type Config struct {
 	Key             string
 	AuditFile       string
 	AuditURL        string
+	CryptoKey       string
 }
 
 // LoadConfig читает конфигурацию из флагов командной строки и переменных окружения.
@@ -32,6 +33,7 @@ func LoadConfig(logger Logger) *Config {
 		Key:             "",
 		AuditFile:       "",
 		AuditURL:        "",
+		CryptoKey:       "",
 	}
 
 	// flags
@@ -43,6 +45,7 @@ func LoadConfig(logger Logger) *Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Hash key")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "audit log file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "audit log remote URL")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Path to private key file")
 	flag.Parse()
 
 	// env priority
@@ -77,6 +80,9 @@ func LoadConfig(logger Logger) *Config {
 	}
 	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
 		cfg.AuditURL = v
+	}
+	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		cfg.CryptoKey = v
 	}
 
 	return cfg

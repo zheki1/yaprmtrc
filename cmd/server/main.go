@@ -124,6 +124,7 @@ func run() error {
 		db:          dbConn,
 		key:         cfg.Key,
 		audit:       NewAuditPublisher(logger),
+		cryptoKey:   cfg.CryptoKey,
 	}
 
 	if cfg.AuditFile != "" {

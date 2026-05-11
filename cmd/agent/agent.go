@@ -118,7 +118,19 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 			return err
 		}
 
-		body, err := gzipPayload(payload)
+		body := payload
+		if a.cfg.CryptoKey != "" {
+			pubKey, err := security.LoadPublicKey(a.cfg.CryptoKey)
+			if err != nil {
+				return fmt.Errorf("failed to load public key: %w", err)
+			}
+			body, err = security.EncryptHybrid(payload, pubKey)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt payload: %w", err)
+			}
+		}
+
+		body, err = gzipPayload(body)
 		if err != nil {
 			return err
 		}
@@ -127,6 +139,10 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetBody(body)
+
+		if a.cfg.CryptoKey != "" {
+			req.SetHeader("Encrypted", "true")
+		}
 
 		if a.cfg.Key != "" {
 			req.SetHeader("HashSHA256", security.CalcHash(payload, a.cfg.Key))
@@ -156,7 +172,19 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 			return err
 		}
 
-		body, err := gzipPayload(payload)
+		body := payload
+		if a.cfg.CryptoKey != "" {
+			pubKey, err := security.LoadPublicKey(a.cfg.CryptoKey)
+			if err != nil {
+				return fmt.Errorf("failed to load public key: %w", err)
+			}
+			body, err = security.EncryptHybrid(payload, pubKey)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt payload: %w", err)
+			}
+		}
+
+		body, err = gzipPayload(body)
 		if err != nil {
 			return err
 		}
@@ -165,6 +193,10 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetBody(body)
+
+		if a.cfg.CryptoKey != "" {
+			req.SetHeader("Encrypted", "true")
+		}
 
 		if a.cfg.Key != "" {
 			req.SetHeader("HashSHA256", security.CalcHash(payload, a.cfg.Key))
