@@ -20,6 +20,7 @@ type Config struct {
 	AuditFile       string
 	AuditURL        string
 	CryptoKey       string
+	TrustedSubnet   string
 }
 
 // fileConfig описывает структуру JSON-файла конфигурации.
@@ -31,6 +32,7 @@ type fileConfig struct {
 	StoreFile     *string `json:"store_file"`
 	DatabaseDSN   *string `json:"database_dsn"`
 	CryptoKey     *string `json:"crypto_key"`
+	TrustedSubnet *string `json:"trusted_subnet"`
 }
 
 // loadFileConfig читает и парсит JSON-файл конфигурации по заданному пути.
@@ -46,6 +48,9 @@ func loadFileConfig(path string) (*fileConfig, error) {
 	return &fc, nil
 }
 
+// LoadConfig читает конфигурацию из флагов командной строки, переменных окружения
+// и (опционально) JSON-файла конфигурации.
+//
 // Приоритет (от высшего к низшему):
 //  1. Переменные окружения
 //  2. Флаги командной строки
@@ -62,6 +67,7 @@ func LoadConfig(logger Logger) *Config {
 		AuditFile:       "",
 		AuditURL:        "",
 		CryptoKey:       "",
+		TrustedSubnet:   "",
 	}
 
 	var (
@@ -86,6 +92,7 @@ func LoadConfig(logger Logger) *Config {
 		configPath = os.Getenv("CONFIG")
 	}
 
+	// начинаем со значений по умолчанию
 	cfg := *defaults
 
 	// применяем JSON-файл (наименьший приоритет после дефолтов)
@@ -118,7 +125,7 @@ func LoadConfig(logger Logger) *Config {
 		}
 	}
 
-	// --- применяем флаги (перезаписывают значения из файла) ---
+	// применяем флаги (перезаписывают значения из файла)
 	// Используем Visit, чтобы применять только явно переданные флаги,
 	// а не все (в том числе со значениями по умолчанию).
 	flag.Visit(func(f *flag.Flag) {
@@ -144,7 +151,7 @@ func LoadConfig(logger Logger) *Config {
 		}
 	})
 
-	// --- переменные окружения (наивысший приоритет) ---
+	// переменные окружения (наивысший приоритет)
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
 	}

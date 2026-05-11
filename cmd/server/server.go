@@ -10,14 +10,15 @@ import (
 // Server — центральная структура HTTP-сервера сбора метрик.
 // Содержит хранилище, логгер, файловое хранилище, подключение к БД и настройки аудита.
 type Server struct {
-	storage     repository.Repository
-	logger      Logger
-	fileStorage *FileStorage
-	syncSave    bool
-	db          *pgxpool.Pool
-	key         string
-	audit       *AuditPublisher
-	cryptoKey   string
+	storage       repository.Repository
+	logger        Logger
+	fileStorage   *FileStorage
+	syncSave      bool
+	db            *pgxpool.Pool
+	key           string
+	audit         *AuditPublisher
+	cryptoKey     string
+	trustedSubnet string
 }
 
 func (s *Server) saveIfNeeded() {

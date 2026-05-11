@@ -21,9 +21,10 @@ import (
 // Agent — агент сбора метрик. Периодически собирает runtime- и gopsutil-метрики
 // и отправляет их на сервер пакетно (через /updates).
 type Agent struct {
-	cfg    *Config
-	client *resty.Client
-	logger *zap.SugaredLogger
+	cfg     *Config
+	client  *resty.Client
+	logger  *zap.SugaredLogger
+	agentIP string
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -35,14 +36,39 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot init logger: %w", err)
 	}
+
+	agentIP := getAgentIP()
+
 	return &Agent{
-		cfg:    cfg,
-		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
-		logger: logger,
+		cfg:     cfg,
+		client:  resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
+		logger:  logger,
+		agentIP: agentIP,
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
 	}, nil
+}
+
+// getAgentIP получает IP адрес хоста агента
+func getAgentIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipnet.IP.To4()
+		if ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+			return ip.String()
+		}
+	}
+
+	return "127.0.0.1"
 }
 
 // Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
@@ -138,6 +164,7 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 		req := a.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
+			SetHeader("X-Real-IP", a.agentIP).
 			SetBody(body)
 
 		if a.cfg.CryptoKey != "" {
@@ -192,6 +219,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 		req := a.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
+			SetHeader("X-Real-IP", a.agentIP).
 			SetBody(body)
 
 		if a.cfg.CryptoKey != "" {
