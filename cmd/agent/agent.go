@@ -21,9 +21,12 @@ import (
 // Agent — агент сбора метрик. Периодически собирает runtime- и gopsutil-метрики
 // и отправляет их на сервер пакетно (через /updates).
 type Agent struct {
-	cfg    *Config
-	client *resty.Client
-	logger *zap.SugaredLogger
+	cfg        *Config
+	client     *resty.Client
+	logger     *zap.SugaredLogger
+	agentIP    string
+	grpcClient *GRPCClient
+	ctx        context.Context
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -35,18 +38,56 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot init logger: %w", err)
 	}
-	return &Agent{
-		cfg:    cfg,
-		client: resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
-		logger: logger,
+
+	agentIP := getAgentIP()
+
+	agent := &Agent{
+		cfg:     cfg,
+		client:  resty.New().SetBaseURL("http://" + cfg.Addr).SetTimeout(5 * time.Second),
+		logger:  logger,
+		agentIP: agentIP,
 
 		Gauge:   make(map[string]float64),
 		Counter: make(map[string]int64),
-	}, nil
+	}
+
+	// Если используется gRPC, инициализируем gRPC клиент
+	if cfg.UseGRPC {
+		grpcClient, err := NewGRPCClient(cfg.GRPCAddr, agentIP, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize gRPC client: %w", err)
+		}
+		agent.grpcClient = grpcClient
+	}
+
+	return agent, nil
 }
 
-// Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
-func (a *Agent) Start() {
+// getAgentIP получает IP адрес хоста агента
+func getAgentIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipnet.IP.To4()
+		if ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+			return ip.String()
+		}
+	}
+
+	return "127.0.0.1"
+}
+
+// Start запускает циклы сбора и отправки метрик с поддержкой graceful shutdown.
+// Контекст используется для отмены операций при shutdown.
+func (a *Agent) Start(ctx context.Context) {
+	a.ctx = ctx
 	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval))
 
@@ -82,7 +123,7 @@ func (a *Agent) Start() {
 		}
 	}()
 
-	select {}
+	<-ctx.Done()
 
 	// TODO - use sync.WaitGroup to wait for workers to finish (on graceful shutdown implementing)
 }
@@ -112,7 +153,7 @@ func (a *Agent) sendAllMetrics(jobs chan<- Job) {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics) error {
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metric)
 		if err != nil {
 			return err
@@ -138,6 +179,7 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 		req := a.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
+			SetHeader("X-Real-IP", a.agentIP).
 			SetBody(body)
 
 		if a.cfg.CryptoKey != "" {
@@ -166,7 +208,13 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 }
 
 func (a *Agent) sendBatch(metrics []models.Metrics) error {
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	// Если доступен gRPC клиент, используем его
+	if a.grpcClient != nil {
+		return a.grpcClient.SendMetrics(a.ctx, metrics)
+	}
+
+	// Иначе используем HTTP
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metrics)
 		if err != nil {
 			return err
@@ -192,6 +240,7 @@ func (a *Agent) sendBatch(metrics []models.Metrics) error {
 		req := a.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
+			SetHeader("X-Real-IP", a.agentIP).
 			SetBody(body)
 
 		if a.cfg.CryptoKey != "" {
