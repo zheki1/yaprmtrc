@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/zheki1/yaprmtrc/internal/buildinfo"
@@ -121,34 +124,53 @@ func run() error {
 	}
 
 	// --- применяем флаги (перезаписывают файл, но только если переданы явно) ---
+	var flagErr error
 	flag.Visit(func(f *flag.Flag) {
+		if flagErr != nil {
+			return
+		}
 		switch f.Name {
 		case "a":
 			cfg.Addr = f.Value.String()
 		case "r":
-			if v, err := strconv.Atoi(f.Value.String()); err == nil {
-				cfg.ReportInterval = v
+			v, err := strconv.Atoi(f.Value.String())
+			if err != nil || v <= 0 {
+				flagErr = fmt.Errorf("invalid -r flag: %s", f.Value.String())
+				return
 			}
+			cfg.ReportInterval = v
 		case "p":
-			if v, err := strconv.Atoi(f.Value.String()); err == nil {
-				cfg.PollInterval = v
+			v, err := strconv.Atoi(f.Value.String())
+			if err != nil || v <= 0 {
+				flagErr = fmt.Errorf("invalid -p flag: %s", f.Value.String())
+				return
 			}
+			cfg.PollInterval = v
 		case "k":
 			cfg.Key = f.Value.String()
 		case "l":
-			if v, err := strconv.Atoi(f.Value.String()); err == nil {
-				cfg.RateLimit = v
+			v, err := strconv.Atoi(f.Value.String())
+			if err != nil || v <= 0 {
+				flagErr = fmt.Errorf("invalid -l flag: %s", f.Value.String())
+				return
 			}
+			cfg.RateLimit = v
 		case "crypto-key":
 			cfg.CryptoKey = f.Value.String()
 		case "grpc":
-			if v, err := strconv.ParseBool(f.Value.String()); err == nil {
-				cfg.UseGRPC = v
+			v, err := strconv.ParseBool(f.Value.String())
+			if err != nil {
+				flagErr = fmt.Errorf("invalid -grpc flag: %s", f.Value.String())
+				return
 			}
+			cfg.UseGRPC = v
 		case "grpc-addr":
 			cfg.GRPCAddr = f.Value.String()
 		}
 	})
+	if flagErr != nil {
+		return flagErr
+	}
 
 	// --- переменные окружения (наивысший приоритет) ---
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
@@ -182,9 +204,11 @@ func run() error {
 		cfg.CryptoKey = v
 	}
 	if v, ok := os.LookupEnv("USE_GRPC"); ok {
-		if b, err := strconv.ParseBool(v); err == nil {
-			cfg.UseGRPC = b
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid USE_GRPC: %s", v)
 		}
+		cfg.UseGRPC = b
 	}
 	if v, ok := os.LookupEnv("GRPC_ADDR"); ok {
 		cfg.GRPCAddr = v
@@ -194,7 +218,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	agent.Start()
+
+	// Создаем контекст с обработкой сигналов для graceful shutdown
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	agent.Start(ctx)
 	return nil
 }
 

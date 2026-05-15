@@ -155,10 +155,15 @@ func run() error {
 		}
 	}()
 
-	// Инициализируем gRPC сервер с перехватчиком для проверки подсети
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(NewTrustedSubnetInterceptor(cfg.TrustedSubnet, logger)),
-	)
+	// Инициализируем gRPC сервер с опциями
+	var opts []grpc.ServerOption
+
+	// Добавляем перехватчик для проверки подсети только если она настроена
+	if cfg.TrustedSubnet != "" {
+		opts = append(opts, grpc.UnaryInterceptor(NewTrustedSubnetInterceptor(cfg.TrustedSubnet, logger)))
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	defer grpcServer.GracefulStop()
 
 	// Регистрируем gRPC сервис

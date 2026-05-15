@@ -26,6 +26,7 @@ type Agent struct {
 	logger     *zap.SugaredLogger
 	agentIP    string
 	grpcClient *GRPCClient
+	ctx        context.Context
 
 	Gauge   map[string]float64
 	Counter map[string]int64
@@ -54,10 +55,9 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	if cfg.UseGRPC {
 		grpcClient, err := NewGRPCClient(cfg.GRPCAddr, agentIP, logger)
 		if err != nil {
-			logger.Warnf("failed to initialize gRPC client: %v, falling back to HTTP", err)
-		} else {
-			agent.grpcClient = grpcClient
+			return nil, fmt.Errorf("failed to initialize gRPC client: %w", err)
 		}
+		agent.grpcClient = grpcClient
 	}
 
 	return agent, nil
@@ -84,8 +84,10 @@ func getAgentIP() string {
 	return "127.0.0.1"
 }
 
-// Start запускает циклы сбора и отправки метрик. Блокирует вызывающую горутину.
-func (a *Agent) Start() {
+// Start запускает циклы сбора и отправки метрик с поддержкой graceful shutdown.
+// Контекст используется для отмены операций при shutdown.
+func (a *Agent) Start(ctx context.Context) {
+	a.ctx = ctx
 	a.logger.Infoln(fmt.Sprintf("Agent started. Server=%s, poll=%ds, report=%ds\n",
 		a.cfg.Addr, a.cfg.PollInterval, a.cfg.ReportInterval))
 
@@ -121,7 +123,7 @@ func (a *Agent) Start() {
 		}
 	}()
 
-	select {}
+	<-ctx.Done()
 
 	// TODO - use sync.WaitGroup to wait for workers to finish (on graceful shutdown implementing)
 }
@@ -151,7 +153,7 @@ func (a *Agent) sendAllMetrics(jobs chan<- Job) {
 }
 
 func (a *Agent) sendMetric(metric models.Metrics) error {
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metric)
 		if err != nil {
 			return err
@@ -208,11 +210,11 @@ func (a *Agent) sendMetric(metric models.Metrics) error {
 func (a *Agent) sendBatch(metrics []models.Metrics) error {
 	// Если доступен gRPC клиент, используем его
 	if a.grpcClient != nil {
-		return a.grpcClient.SendMetrics(context.Background(), metrics)
+		return a.grpcClient.SendMetrics(a.ctx, metrics)
 	}
 
 	// Иначе используем HTTP
-	if err := retry.DoRetry(context.Background(), isRetryableNetErr, func() error {
+	if err := retry.DoRetry(a.ctx, isRetryableNetErr, func() error {
 		payload, err := json.Marshal(metrics)
 		if err != nil {
 			return err
