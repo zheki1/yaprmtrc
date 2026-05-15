@@ -47,10 +47,9 @@ func (gc *GRPCClient) SendMetrics(ctx context.Context, metrics []models.Metrics)
 	// Преобразуем метрики из модели в proto-формат
 	pbMetrics := make([]*pb.Metric, 0, len(metrics))
 	for _, m := range metrics {
-		pbMetric := &pb.Metric{
-			Id:   m.ID,
-			Type: modelTypeToPBType(m.MType),
-		}
+		pbMetric := &pb.Metric{}
+		pbMetric.Id = m.ID
+		pbMetric.Type = modelTypeToPBType(m.MType)
 
 		switch m.MType {
 		case models.Counter:
@@ -70,9 +69,8 @@ func (gc *GRPCClient) SendMetrics(ctx context.Context, metrics []models.Metrics)
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", gc.agentIP)
 
 	// Отправляем метрики на сервер
-	req := &pb.UpdateMetricsRequest{
-		Metrics: pbMetrics,
-	}
+	req := &pb.UpdateMetricsRequest{}
+	req.Metrics = pbMetrics
 
 	_, err := gc.client.UpdateMetrics(ctx, req)
 	if err != nil {

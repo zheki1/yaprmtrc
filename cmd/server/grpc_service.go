@@ -28,23 +28,25 @@ func (m *MetricsServiceImpl) UpdateMetrics(ctx context.Context, req *pb.UpdateMe
 		return &pb.UpdateMetricsResponse{}, nil
 	}
 
-	for _, metric := range req.Metrics {
+	for _, metric := range req.GetMetrics() {
 		if metric == nil {
 			continue
 		}
 
 		// Преобразуем proto-метрику в модель Metrics
 		modelMetric := &models.Metrics{
-			ID:    metric.Id,
-			MType: pbTypeToModel(metric.Type),
+			ID:    metric.GetId(),
+			MType: pbTypeToModel(metric.GetType()),
 		}
 
 		// В зависимости от типа метрики устанавливаем значение
-		switch metric.Type {
+		switch metric.GetType() {
 		case pb.Metric_COUNTER:
-			modelMetric.Delta = &metric.Delta
+			delta := metric.GetDelta()
+			modelMetric.Delta = &delta
 		case pb.Metric_GAUGE:
-			modelMetric.Value = &metric.Value
+			value := metric.GetValue()
+			modelMetric.Value = &value
 		default:
 			continue
 		}
